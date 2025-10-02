@@ -1,0 +1,82 @@
+import { StyleSheet } from "react-native";
+const styles = StyleSheet.create({
+  container: { flex: 1, backgroundColor: "#f5f7fa" },
+  header: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    backgroundColor: "#172e53",
+  },
+  monthBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(255,255,255,0.15)",
+  },
+  monthBtnTxt: { color: "#fff", fontSize: 16, fontWeight: "700" },
+  monthTitle: { flex: 1, textAlign: "center", color: "#fff", fontSize: 16, fontWeight: "700" },
+
+  summary: {
+    backgroundColor: "#fff",
+    margin: 12,
+    borderRadius: 12,
+    padding: 12,
+    flexDirection: "row",
+    gap: 12,
+  },
+  summaryCol: { flex: 1, alignItems: "center" },
+  sumLabel: { color: "#666", fontSize: 12 },
+  sumValue: { fontSize: 16, fontWeight: "700", marginTop: 2 },
+
+  loader: { flex: 1, alignItems: "center", justifyContent: "center" },
+
+  row: {
+    backgroundColor: "#fff",
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 10,
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  rowDesc: { fontSize: 14, color: "#222", fontWeight: "600" },
+  rowDate: { fontSize: 12, color: "#777", marginTop: 4 },
+  rowAmount: { fontSize: 15, fontWeight: "800", marginLeft: 12 },
+
+  fab: {
+    position: "absolute",
+    right: 16,
+    bottom: 24,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: "#f39c12",
+    alignItems: "center",
+    justifyContent: "center",
+    elevation: 4,
+  },
+  fabTxt: { color: "#fff", fontSize: 28, lineHeight: 28, fontWeight: "800", marginTop: -2 },
+
+  modalWrap: { flex: 1, backgroundColor: "rgba(0,0,0,0.35)", justifyContent: "flex-end" },
+  modalCard: { backgroundColor: "#fff", borderTopLeftRadius: 16, borderTopRightRadius: 16, padding: 16 },
+  modalTitle: { fontWeight: "800", fontSize: 16, marginBottom: 12 },
+  typeSwitch: { flexDirection: "row", gap: 8, marginBottom: 8 },
+  typeBtn: { flex: 1, borderRadius: 8, borderWidth: 1, borderColor: "#ddd", paddingVertical: 10, alignItems: "center" },
+  typeBtnActive: { backgroundColor: "#172e53", borderColor: "#172e53" },
+  typeBtnTxt: { color: "#222", fontWeight: "700" },
+  typeBtnTxtActive: { color: "#fff" },
+  input: {
+    borderWidth: 1,
+    borderColor: "#ddd",
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    marginTop: 8,
+  },
+  modalActions: { flexDirection: "row", justifyContent: "flex-end", gap: 12, marginTop: 14 },
+  btn: { paddingHorizontal: 16, paddingVertical: 10, borderRadius: 8 },
+  btnTxt: { fontWeight: "700" },
+});
+export default styles;
