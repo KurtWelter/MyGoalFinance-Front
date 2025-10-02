@@ -1,7 +1,7 @@
 import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
 import { Text, TouchableOpacity, View } from "react-native";
-import { useQuestionnaireStore } from "../store/useQuestionnaireStore";
+import { useQuestionnaireStore } from "../../../store/useQuestionnaireStore";
 
 export default function Step2() {
   const router = useRouter();

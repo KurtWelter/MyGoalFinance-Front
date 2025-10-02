@@ -1,7 +1,10 @@
+// app/Screen/register.tsx
 import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
 import React, { useRef, useState } from "react";
 import {
+  ActivityIndicator,
+  Alert,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
@@ -11,62 +14,71 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import styles from "./../Styles/registerStyles";
-import { useUserStore } from "./store/useQuestionnaireStore"; // ✅ Zustand
+import styles from "../../Styles/registerStyles";
+import { useAuth } from "../../store/auth"; // <- usa pendingCreds / setPendingCreds
 
 export default function Register() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
 
-  // Zustand: guardar user
-  const setUser = useUserStore((state) => state.setUser);
+  const { register: registerUser, login, setPendingCreds } = useAuth();
 
-  // State local
+  // form state
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
-  const [errors, setErrors] = useState<{ [key: string]: string }>({});
+  const [errors, setErrors] = useState<Record<string, string>>({});
+  const [busy, setBusy] = useState(false);
 
-  // Refs para navegar con el teclado
+  // refs
   const emailRef = useRef<TextInput>(null);
   const passRef = useRef<TextInput>(null);
   const confirmRef = useRef<TextInput>(null);
 
-  // Validaciones
+  // validators
   const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-  const passwordRegex =
-    /^(?=.*[A-Z])(?=.*[!@#$%^&*(),.?":{}|<>]).{8,}$/;
+  const passwordRegex = /^(?=.*[A-Z])(?=.*[!@#$%^&*(),.?":{}|<>]).{8,}$/;
 
   const validate = () => {
-    const e: { [key: string]: string } = {};
+    const e: Record<string, string> = {};
     if (!name.trim()) e.name = "Debe ingresar su nombre";
     if (!email.trim()) e.email = "Debe ingresar su correo";
-    else if (!emailRegex.test(email))
-      e.email = "Debe ingresar un correo válido (ej: usuario@mail.com)";
+    else if (!emailRegex.test(email)) e.email = "Correo inválido";
     if (!password.trim()) e.password = "Debe ingresar una contraseña";
     else if (!passwordRegex.test(password))
-      e.password =
-        "La contraseña debe tener mínimo 8 caracteres, 1 mayúscula y 1 caracter especial";
-    if (!confirmPassword.trim())
-      e.confirmPassword = "Debe confirmar la contraseña";
-    else if (password !== confirmPassword)
-      e.confirmPassword = "Las contraseñas no coinciden";
+      e.password = "Mín 8, 1 mayúscula y 1 caracter especial";
+    if (!confirmPassword.trim()) e.confirmPassword = "Debe confirmar la contraseña";
+    else if (password !== confirmPassword) e.confirmPassword = "Las contraseñas no coinciden";
 
     setErrors(e);
     return Object.keys(e).length === 0;
   };
 
-  const handleRegister = () => {
+  const handleRegister = async () => {
     if (!validate()) return;
 
-    // Guardar en Zustand (⚠️ nunca guardes contraseña en claro en prod)
-    setUser({ name, email, password });
+    try {
+      setBusy(true);
 
-    console.log("📌 Usuario registrado en Zustand:", { name, email, password });
+      // 1) Registrar en backend
+      const res = await registerUser(name.trim(), email.trim(), password);
 
-    // Ir al cuestionario
-    router.replace("/Screen/questionnaire/step1");
+      // 2) Si requiere confirmación: guardar creds TEMPORALMENTE y navegar
+      if (res?.requires_confirmation) {
+        setPendingCreds({ email: email.trim(), password });
+        router.replace("../Screen/confirm-email");
+        return;
+      }
+
+      // 3) Si NO requiere confirmación: login y cuestionario
+      await login(email.trim(), password);
+      router.replace("/Screen/questionnaire/step1");
+    } catch (e: any) {
+      Alert.alert("Error", e?.message ?? "No se pudo registrar");
+    } finally {
+      setBusy(false);
+    }
   };
 
   return (
@@ -77,7 +89,6 @@ export default function Register() {
       <KeyboardAvoidingView
         style={{ flex: 1 }}
         behavior={Platform.select({ ios: "padding", android: undefined })}
-        // Sube un poco en iOS si tienes header (ajusta 80–120 si fuese necesario)
         keyboardVerticalOffset={Platform.select({ ios: 90, android: 0 })}
       >
         <ScrollView
@@ -140,7 +151,7 @@ export default function Register() {
               <Text style={styles.errorText}>{errors.password}</Text>
             )}
 
-            {/* Confirmar Contraseña */}
+            {/* Confirmar contraseña */}
             <TextInput
               ref={confirmRef}
               style={[
@@ -160,14 +171,23 @@ export default function Register() {
             )}
 
             {/* Botón Registrar */}
-            <TouchableOpacity style={styles.registerButton} onPress={handleRegister}>
-              <Text style={styles.registerButtonText}>Registrarse</Text>
+            <TouchableOpacity
+              style={[styles.registerButton, busy && { opacity: 0.7 }]}
+              onPress={handleRegister}
+              disabled={busy}
+            >
+              {busy ? (
+                <ActivityIndicator />
+              ) : (
+                <Text style={styles.registerButtonText}>Registrarse</Text>
+              )}
             </TouchableOpacity>
 
             {/* Volver al login */}
             <TouchableOpacity
               style={styles.loginButton}
               onPress={() => router.replace("/Screen/login")}
+              disabled={busy}
             >
               <Text style={styles.loginButtonText}>
                 ¿Ya tienes cuenta? Inicia sesión

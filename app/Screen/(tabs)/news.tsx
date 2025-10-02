@@ -2,7 +2,7 @@ import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router"; // 👈 importar router
 import React from "react";
 import { FlatList, Text, TouchableOpacity, View } from "react-native";
-import styles from "../../Styles/newsStyles"; // 👈 estilos dedicados
+import styles from "../../../Styles/newsStyles"; // 👈 estilos dedicados
 
 export default function News() {
   const router = useRouter();

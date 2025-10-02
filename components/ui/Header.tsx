@@ -1,7 +1,7 @@
 import { useRouter } from "expo-router"; // 👈 importar router
 import React from "react";
 import { Image, Text, TouchableOpacity, View } from "react-native";
-import styles from "../../app/Styles/headerStyles";
+import styles from "../../Styles/headerStyles";
 
 export default function Header({ userName }: { userName: string }) {
   const router = useRouter(); // 👈 inicializar router

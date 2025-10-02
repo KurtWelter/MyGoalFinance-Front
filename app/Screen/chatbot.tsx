@@ -8,7 +8,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import styles from "./../Styles/chatbotStyles"; // 👈 estilos dedicados
+import styles from "../../Styles/chatbotStyles"; // 👈 estilos dedicados
 
 export default function Chatbot() {
   const router = useRouter();

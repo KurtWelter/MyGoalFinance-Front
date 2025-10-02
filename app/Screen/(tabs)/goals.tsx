@@ -10,7 +10,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import styles from "../../Styles/goalsStyles";
+import styles from "../../../Styles/goalsStyles";
 
 type Goal = {
   id: string;

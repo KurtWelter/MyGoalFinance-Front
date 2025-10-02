@@ -2,8 +2,8 @@ import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
 import React from "react";
 import { Alert, ScrollView, Text, TouchableOpacity, View } from "react-native";
-import styles from "../../Styles/recapStyles";
-import { useQuestionnaireStore } from "../store/useQuestionnaireStore";
+import { useQuestionnaireStore } from "../../../store/useQuestionnaireStore";
+import styles from "../../../Styles/recapStyles";
 
 export default function Recap() {
   const router = useRouter();
