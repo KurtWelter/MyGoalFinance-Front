@@ -1,241 +1,197 @@
-// app/Screen/(tabs)/transactions.tsx
-import styles from "@/Styles/transactionsStyles";
-import { useFocusEffect } from "expo-router";
-import React, { useCallback, useMemo, useState } from "react";
-import {
-  ActivityIndicator,
-  Alert,
-  FlatList,
-  Modal,
-  Pressable,
-  Text,
-  TextInput,
-  View
-} from "react-native";
-import api from "../../../constants/api";
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { ActivityIndicator, Alert, FlatList, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import api from '../../../constants/api';
+import styles, { C } from '../../../Styles/transactionsStyles';
 
 type Tx = {
-  id: number | string;
+  id: number;
+  user_id: number;
   amount: number;
-  type: "income" | "expense";
-  category_id?: number | null;
-  description?: string | null;
-  occurred_at: string; // YYYY-MM-DD
+  type: 'income'|'expense';
+  category_id?: number|null;
+  description?: string|null;
+  occurred_at: string; // 'YYYY-MM-DD'
 };
 
-const CLP = new Intl.NumberFormat("es-CL", {
-  style: "currency",
-  currency: "CLP",
-  maximumFractionDigits: 0,
-});
-
-function ymAdd(ym: string, delta: number) {
-  const [y, m] = ym.split("-").map(Number);
-  const d = new Date(y, m - 1 + delta, 1);
-  const yy = d.getFullYear();
-  const mm = String(d.getMonth() + 1).padStart(2, "0");
-  return `${yy}-${mm}`;
-}
-function ymLabel(ym: string) {
-  const [y, m] = ym.split("-").map(Number);
-  const d = new Date(y, m - 1, 1);
-  return d.toLocaleDateString("es-CL", { month: "long", year: "numeric" });
-}
+/* ───────── helpers de fecha en FRONT ───────── */
+const ymdLocal = (d = new Date()) => {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+};
+const ymOf = (d: Date) => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+const monthTitle = (d: Date) =>
+  d.toLocaleDateString('es-CL', { year: 'numeric', month: 'long' });
 
 export default function Transactions() {
-  const [month, setMonth] = useState<string>(() => {
-    const d = new Date();
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-  });
+  // Mes “canónico” siempre día 1
+  const [monthDate, setMonthDate] = useState<Date>(() => new Date(new Date().getFullYear(), new Date().getMonth(), 1));
+  const [loading, setLoading] = useState(true);
+  const [list, setList] = useState<Tx[]>([]);
 
-  const [rows, setRows] = useState<Tx[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [refreshing, setRefreshing] = useState(false);
+  // Form
+  const [tType, setTType] = useState<'income'|'expense'>('income');
+  const [amount, setAmount] = useState('');
+  const [desc, setDesc] = useState('');
 
-  // Modal crear
-  const [showNew, setShowNew] = useState(false);
-  const [newType, setNewType] = useState<"income" | "expense">("expense");
-  const [newAmount, setNewAmount] = useState<string>("");
-  const [newDesc, setNewDesc] = useState<string>("");
+  const ym = useMemo(() => ymOf(monthDate), [monthDate]);
 
-  const totals = useMemo(() => {
-    const inc = rows.reduce((s, r) => s + (r.type === "income" ? r.amount : 0), 0);
-    const exp = rows.reduce((s, r) => s + (r.type === "expense" ? r.amount : 0), 0);
-    return { inc, exp, net: inc - exp };
-  }, [rows]);
-
-  const fetchMonth = useCallback(async () => {
+  const load = useCallback(async () => {
+    setLoading(true);
     try {
-      setLoading(true);
-      const data = await api.listTransactions({ month }); // 👈 tu api ya normaliza YYYY-MM
-      setRows(Array.isArray(data) ? data : []);
+      const rows = await api.listTransactions({ month: ym });
+      setList(rows);
     } catch (e: any) {
-      Alert.alert("Error", e?.message ?? "No se pudieron cargar las transacciones");
+      Alert.alert('Error', e?.message ?? 'No se pudieron cargar movimientos');
     } finally {
       setLoading(false);
     }
-  }, [month]);
+  }, [ym]);
 
-  useFocusEffect(
-    useCallback(() => {
-      fetchMonth();
-    }, [fetchMonth])
-  );
+  useEffect(() => { load(); }, [load]);
 
-  const onRefresh = useCallback(async () => {
-    try {
-      setRefreshing(true);
-      await fetchMonth();
-    } finally {
-      setRefreshing(false);
+  // KPIs
+  const kpis = useMemo(() => {
+    let inc = 0, exp = 0;
+    for (const r of list) {
+      const n = Number(r.amount) || 0;
+      if (r.type === 'income') inc += n; else exp += n;
     }
-  }, [fetchMonth]);
+    return { inc, exp, net: inc - exp };
+  }, [list]);
 
-  const createTx = async () => {
-    const amount = Number(newAmount.replace(/\./g, "").replace(",", "."));
-    if (!amount || amount <= 0) {
-      Alert.alert("Valida", "Ingresa un monto válido");
-      return;
-    }
+  const prevMonth = () => {
+    const d = new Date(monthDate.getFullYear(), monthDate.getMonth() - 1, 1);
+    setMonthDate(d);
+  };
+  const nextMonth = () => {
+    const d = new Date(monthDate.getFullYear(), monthDate.getMonth() + 1, 1);
+    setMonthDate(d);
+  };
+
+  const save = async () => {
+    const val = Number(amount.replace(/[^\d.-]/g, ''));
+    if (!val || val <= 0) return Alert.alert('Monto', 'Ingresa un monto válido');
+
     try {
       await api.createTransaction({
-        amount,
-        type: newType,
-        description: newDesc || null,
-        // occurred_at: deja que el backend ponga hoy por defecto, o envía YYYY-MM-DD
+        amount: val,
+        type: tType,
+        description: desc || undefined,
+        occurred_at: ymdLocal(), // 👈 SIEMPRE LOCAL (YYYY-MM-DD)
       });
-      setShowNew(false);
-      setNewAmount("");
-      setNewDesc("");
-      setNewType("expense");
-      await fetchMonth();
+      setAmount('');
+      setDesc('');
+      await load(); // refresca lista/KPIs
     } catch (e: any) {
-      Alert.alert("Error", e?.message ?? "No se pudo crear el movimiento");
+      Alert.alert('Error', e?.message ?? 'No se pudo guardar');
     }
   };
 
   return (
-    <View style={styles.container}>
-      {/* Header Mes + Totales */}
+    <View style={[styles.container, { backgroundColor: C.bg1 }]}>
+      {/* Header navegación por mes */}
       <View style={styles.header}>
-        <Pressable style={styles.monthBtn} onPress={() => setMonth((m) => ymAdd(m, -1))}>
-          <Text style={styles.monthBtnTxt}>◀︎</Text>
-        </Pressable>
-        <Text style={styles.monthTitle}>{ymLabel(month)}</Text>
-        <Pressable style={styles.monthBtn} onPress={() => setMonth((m) => ymAdd(m, +1))}>
-          <Text style={styles.monthBtnTxt}>▶︎</Text>
-        </Pressable>
+        <TouchableOpacity style={styles.navBtn} onPress={prevMonth}>
+          <Text style={styles.navBtnTxt}>{'<'}</Text>
+        </TouchableOpacity>
+        <Text style={styles.headerTitle}>
+          {monthTitle(monthDate)}
+        </Text>
+        <TouchableOpacity style={styles.navBtn} onPress={nextMonth}>
+          <Text style={styles.navBtnTxt}>{'>'}</Text>
+        </TouchableOpacity>
       </View>
 
-      <View style={styles.summary}>
-        <View style={styles.summaryCol}>
-          <Text style={styles.sumLabel}>Ingresos</Text>
-          <Text style={[styles.sumValue, { color: "#2e7d32" }]}>{CLP.format(totals.inc)}</Text>
+      {/* KPIs */}
+      <View style={styles.kpisRow}>
+        <View style={styles.kpiCard}>
+          <Text style={styles.kpiLabel}>Ingresos</Text>
+          <Text style={[styles.kpiValue, { color: C.income }]}>
+            ${kpis.inc.toLocaleString('es-CL')}
+          </Text>
         </View>
-        <View style={styles.summaryCol}>
-          <Text style={styles.sumLabel}>Gastos</Text>
-          <Text style={[styles.sumValue, { color: "#c62828" }]}>{CLP.format(totals.exp)}</Text>
+        <View style={styles.kpiCard}>
+          <Text style={styles.kpiLabel}>Gastos</Text>
+          <Text style={[styles.kpiValue, { color: C.expense }]}>
+            ${kpis.exp.toLocaleString('es-CL')}
+          </Text>
         </View>
-        <View style={styles.summaryCol}>
-          <Text style={styles.sumLabel}>Neto</Text>
-          <Text
-            style={[
-              styles.sumValue,
-              { color: totals.net >= 0 ? "#2e7d32" : "#c62828" },
-            ]}
-          >
-            {CLP.format(totals.net)}
+        <View style={styles.kpiCard}>
+          <Text style={styles.kpiLabel}>Neto</Text>
+          <Text style={styles.kpiValue}>
+            ${kpis.net.toLocaleString('es-CL')}
           </Text>
         </View>
       </View>
 
       {/* Lista */}
       {loading ? (
-        <View style={styles.loader}>
-          <ActivityIndicator />
-        </View>
+        <View style={styles.busy}><ActivityIndicator /></View>
+      ) : list.length === 0 ? (
+        <Text style={styles.emptyText}>Sin movimientos en este mes</Text>
       ) : (
         <FlatList
-          data={rows}
-          keyExtractor={(item) => String(item.id)}
-          onRefresh={onRefresh}
-          refreshing={refreshing}
-          contentContainerStyle={{ padding: 12, paddingBottom: 100 }}
-          ListEmptyComponent={
-            <Text style={{ textAlign: "center", color: "#666", marginTop: 24 }}>
-              Sin movimientos en este mes
-            </Text>
-          }
+          data={list}
+          keyExtractor={(t) => String(t.id)}
+          contentContainerStyle={{ paddingBottom: 180 }}
           renderItem={({ item }) => (
-            <View style={styles.row}>
+            <View style={styles.item}>
               <View style={{ flex: 1 }}>
-                <Text style={styles.rowDesc}>{item.description || "(Sin descripción)"}</Text>
-                <Text style={styles.rowDate}>{item.occurred_at}</Text>
+                <Text style={styles.itemDesc}>{item.description || (item.type === 'income' ? 'Ingreso' : 'Gasto')}</Text>
+                <Text style={styles.itemDate}>{item.occurred_at}</Text>
               </View>
               <Text
                 style={[
-                  styles.rowAmount,
-                  { color: item.type === "income" ? "#2e7d32" : "#c62828" },
+                  styles.itemAmount,
+                  { color: item.type === 'income' ? C.income : C.expense },
                 ]}
               >
-                {item.type === "income" ? "+" : "-"} {CLP.format(item.amount)}
+                {(item.type === 'income' ? '+' : '-')}${Number(item.amount).toLocaleString('es-CL')}
               </Text>
             </View>
           )}
         />
       )}
 
-      {/* FAB Nuevo */}
-      <Pressable style={styles.fab} onPress={() => setShowNew(true)}>
-        <Text style={styles.fabTxt}>＋</Text>
-      </Pressable>
-
-      {/* Modal Crear */}
-      <Modal visible={showNew} transparent animationType="slide" onRequestClose={() => setShowNew(false)}>
-        <View style={styles.modalWrap}>
-          <View style={styles.modalCard}>
-            <Text style={styles.modalTitle}>Nuevo movimiento</Text>
-
-            <View style={styles.typeSwitch}>
-              <Pressable
-                style={[styles.typeBtn, newType === "expense" && styles.typeBtnActive]}
-                onPress={() => setNewType("expense")}
-              >
-                <Text style={[styles.typeBtnTxt, newType === "expense" && styles.typeBtnTxtActive]}>Gasto</Text>
-              </Pressable>
-              <Pressable
-                style={[styles.typeBtn, newType === "income" && styles.typeBtnActive]}
-                onPress={() => setNewType("income")}
-              >
-                <Text style={[styles.typeBtnTxt, newType === "income" && styles.typeBtnTxtActive]}>Ingreso</Text>
-              </Pressable>
-            </View>
-
-            <TextInput
-              placeholder="Monto (CLP)"
-              keyboardType="numeric"
-              value={newAmount}
-              onChangeText={setNewAmount}
-              style={styles.input}
-            />
-            <TextInput
-              placeholder="Descripción"
-              value={newDesc}
-              onChangeText={setNewDesc}
-              style={styles.input}
-            />
-
-            <View style={styles.modalActions}>
-              <Pressable style={[styles.btn, { backgroundColor: "#ccc" }]} onPress={() => setShowNew(false)}>
-                <Text style={styles.btnTxt}>Cancelar</Text>
-              </Pressable>
-              <Pressable style={[styles.btn, { backgroundColor: "#f39c12" }]} onPress={createTx}>
-                <Text style={[styles.btnTxt, { color: "#fff" }]}>Guardar</Text>
-              </Pressable>
-            </View>
-          </View>
+      {/* Formulario inferior */}
+      <View style={styles.formCard}>
+        <View style={styles.typeRow}>
+          <TouchableOpacity
+            onPress={() => setTType('income')}
+            style={[styles.typeBtn, tType === 'income' && styles.typeBtnActiveIncome]}
+          >
+            <Text style={[styles.typeBtnTxt, tType === 'income' && styles.typeBtnTxtActive]}>Ingreso</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={() => setTType('expense')}
+            style={[styles.typeBtn, tType === 'expense' && styles.typeBtnActiveExpense]}
+          >
+            <Text style={[styles.typeBtnTxt, tType === 'expense' && styles.typeBtnTxtActive]}>Gasto</Text>
+          </TouchableOpacity>
         </View>
-      </Modal>
+
+        <TextInput
+          style={styles.input}
+          placeholder="Monto"
+          placeholderTextColor={C.muted}
+          keyboardType="numeric"
+          value={amount}
+          onChangeText={setAmount}
+        />
+        <TextInput
+          style={styles.input}
+          placeholder="Descripción (opcional)"
+          placeholderTextColor={C.muted}
+          value={desc}
+          onChangeText={setDesc}
+        />
+
+        <TouchableOpacity style={styles.saveBtn} onPress={save}>
+          <Text style={styles.saveBtnTxt}>Guardar movimiento</Text>
+        </TouchableOpacity>
+      </View>
     </View>
   );
 }
