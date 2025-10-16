@@ -1,5 +1,7 @@
 // constants/api.ts
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import Constants from 'expo-constants';
+import { Platform } from 'react-native';
 import { API_PREFIX, API_URL } from './config';
 
 type Method = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
@@ -15,6 +17,43 @@ type ReqOpts = {
   /** Delay base entre reintentos (ms). Default: 600 */
   retryDelayMs?: number;
 };
+
+/** 
+ * Resolver de base URL multiplataforma.
+ * - Prioriza API_URL que exportas desde ./config
+ * - Si no está, usa expo.extra.apiUrl o EXPO_PUBLIC_API_URL
+ * - En web usa el hostname actual (útil para http://localhost:3000)
+ * - En nativo hace fallback a una IP LAN por defecto (ajústala si quieres)
+ */
+function resolveApiUrl(configUrl?: string) {
+  const extra = (Constants as any)?.expoConfig?.extra?.apiUrl;
+  const env   = process.env.EXPO_PUBLIC_API_URL;
+
+  if (Platform.OS === 'web') {
+    const host =
+      (typeof window !== 'undefined' && window.location?.hostname) || 'localhost';
+    // intenta respetar el puerto del config/env si existe; si no, 3000
+    const portFromConfig = (() => {
+      try {
+        const u = new URL(configUrl || extra || env || '');
+        return u.port || '';
+      } catch {
+        return '';
+      }
+    })();
+    const port = portFromConfig || '3000';
+    return `http://${host}:${port}`;
+  }
+
+  if (configUrl && !/^undefined$/.test(configUrl) && configUrl.trim() !== '') {
+    return configUrl;
+  }
+
+  return extra || env || 'http://192.168.1.83:3000';
+}
+
+// Base URL efectiva (sin romper tus exports actuales)
+const BASE_URL = resolveApiUrl(API_URL);
 
 async function req<T>(
   path: string,
@@ -33,7 +72,8 @@ async function req<T>(
     if (token) headers.Authorization = `Bearer ${token}`;
   }
 
-  const url = `${API_URL}${API_PREFIX}${path}`;
+  // ⬇️ ÚNICA línea cambiada: usar BASE_URL en vez de API_URL
+  const url = `${BASE_URL}${API_PREFIX}${path}`;
 
   // Intento con reintentos controlados (solo red/timeout/5xx)
   let attempt = 0;
@@ -128,6 +168,37 @@ type SummaryMonth = {
   exp: number;
   net: number;
   byCategory: { category_id: number; total: number }[];
+};
+
+/** Tipos de chat */
+type ChatMsg = {
+  id: number;
+  user_id?: number;
+  sender: 'user' | 'bot';
+  message: string;
+  timestamp: string; // ISO
+};
+
+type ChatSendResponse = {
+  user: ChatMsg;
+  bot: ChatMsg;
+};
+
+/** === NUEVOS TIPOS NEWS/RATES === */
+type Rates = {
+  base: 'CLP';
+  usd: number;
+  eur: number;
+  uf: number;
+  updatedAt: string;
+};
+
+type Article = {
+  id: string;
+  title: string;
+  url: string;
+  source?: string;
+  published_at?: string | null;
 };
 
 export const api = {
@@ -227,13 +298,42 @@ export const api = {
   // RECOMMENDATIONS
   listRecommendations: () => req<any[]>('/recommendations', { auth: true }),
 
-  // CHAT
-  chatMessage: (message: string) =>
-    req<{ reply: string }>('/chat/message', {
+  // ──────────────────────────────
+  // CHAT (Groq-ready, consistente)
+  // ──────────────────────────────
+
+  /** Historial del chat del usuario (GET /api/chat) */
+  chatHistory: () => req<ChatMsg[]>('/chat', { auth: true }),
+
+  /** Envía un mensaje y devuelve { user, bot } (POST /api/chat/message) */
+  chatSend: (message: string) =>
+    req<ChatSendResponse>('/chat/message', {
       method: 'POST',
       body: { message },
       auth: true,
     }),
+
+  /** Compatibilidad con código antiguo que esperaba { reply } */
+  chatMessage: async (message: string) => {
+    const res = await req<ChatSendResponse>('/chat', {
+      method: 'POST',
+      body: { message },
+      auth: true,
+    });
+    return { reply: res.bot.message };
+  },
+
+  // ─────────────── PUSH TOKENS ───────────────
+  /** Registra el token de notificaciones push en tu backend */
+  pushRegister: (p: { token: string; platform: 'ios' | 'android' | 'web' }) =>
+    req<{ ok: boolean }>('/push/register', { method: 'POST', body: p, auth: true }),
+
+  // ─────────────── NEWS ───────────────
+  /** Tasas: USD, EUR y UF expresados en CLP */
+  newsRates: () => req<Rates>('/news/rates', { auth: true }),
+
+  /** Feed de noticias financieras */
+  newsFeed: () => req<Article[]>('/news/feed', { auth: true }),
 };
 
 export default api;

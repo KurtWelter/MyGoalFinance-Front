@@ -1,76 +1,106 @@
-import { StyleSheet } from "react-native";
+// Styles/chatbotStyles.ts
+import { StyleSheet } from 'react-native';
+
+const palette = {
+  bg: '#1f2738',
+  card: 'rgba(255,255,255,0.08)',
+  border: 'rgba(255,255,255,0.18)',
+  text: '#E5E7EB',
+  textMuted: '#95a0b5',
+  brand: '#f59e0b',
+  user: '#3b82f6',
+};
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
+  /* ---------- Layout ---------- */
+  container: { flex: 1 },
+  content: { flex: 1 },
+
+  /* ---------- Header ---------- */
+  header: {
+    height: 56,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 12,
   },
-  content: {
-    flex: 1,
-    padding: 20,
+  backButton: {
+    width: 36, height: 36, borderRadius: 18,
+    alignItems: 'center', justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.12)',
+    borderWidth: 1, borderColor: palette.border,
   },
-  title: {
-    fontSize: 22,
-    fontWeight: "bold",
-    marginBottom: 20,
-    color: "#1a1a1a",
+  backButtonText: { color: '#fff', fontSize: 18, fontWeight: '700' },
+  title: { color: '#fff', fontSize: 18, fontWeight: '800' },
+
+  /* ---------- Lista de mensajes ---------- */
+  chatBox: { flex: 1, paddingHorizontal: 12 },
+  // Recuerda: el FlatList usa contentContainerStyle={styles.chatContent}
+  // y el paddingBottom dinámico lo agrega el SafeKeyboardScreen + estado de input
+  chatContent: { paddingTop: 8, gap: 6 },
+
+  bubbleRow: {
+    width: '100%',
+    marginVertical: 2,
+    flexDirection: 'row',
   },
-  chatBox: {
-    flex: 1,
-    marginBottom: 15,
+  alignStart: { justifyContent: 'flex-start' },
+  alignEnd: { justifyContent: 'flex-end' },
+
+  bubble: {
+    maxWidth: '82%',
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: 14,
+    borderWidth: 1,
   },
-  message: {
-    padding: 10,
-    borderRadius: 10,
-    marginVertical: 5,
-    maxWidth: "80%",
+  userBubble: {
+    backgroundColor: palette.user,
+    borderColor: 'rgba(0,0,0,0.15)',
   },
-  userMessage: {
-    alignSelf: "flex-end",
-    backgroundColor: "#f5a623",
-    color: "#fff",
+  botBubble: {
+    backgroundColor: palette.card,
+    borderColor: palette.border,
   },
-  botMessage: {
-    alignSelf: "flex-start",
-    backgroundColor: "#ddd",
-    color: "#000",
-  },
-  inputContainer: {
-    flexDirection: "row",
-    alignItems: "center",
+
+  bubbleText: { fontSize: 15, lineHeight: 20 },
+  userText: { color: '#fff' },
+  botText: { color: palette.text },
+
+  centerFill: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  hint: { marginTop: 8, color: palette.textMuted },
+
+  /* ---------- Barra de entrada (sin absolute) ---------- */
+  inputBar: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    gap: 10,
   },
   input: {
     flex: 1,
+    minHeight: 44,
+    maxHeight: 120,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    backgroundColor: 'rgba(255,255,255,0.10)',
+    borderRadius: 16,
+    color: '#fff',
+    textAlignVertical: 'top',
     borderWidth: 1,
-    borderColor: "#ccc",
-    borderRadius: 8,
-    paddingHorizontal: 10,
-    height: 40,
-    marginRight: 8,
-    backgroundColor: "#fff",
+    borderColor: 'rgba(255,255,255,0.20)',
   },
   sendButton: {
-    backgroundColor: "#f5a623",
-    paddingHorizontal: 15,
-    paddingVertical: 10,
-    borderRadius: 8,
+    height: 44,
+    paddingHorizontal: 16,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: palette.brand,
   },
-  sendButtonText: {
-    color: "#fff",
-    fontWeight: "bold",
-  },
-  backButton: {
-    alignSelf: "flex-start",
-    marginBottom: 10,
-    paddingVertical: 6,
-    paddingHorizontal: 12,
-    backgroundColor: "#312d69",
-    borderRadius: 8,
-  },
-  backButtonText: {
-    color: "white",
-    fontSize: 14,
-    fontWeight: "600",
-  },
+  sendButtonDisabled: { opacity: 0.6 },
+  sendButtonText: { color: '#fff', fontWeight: '800', fontSize: 15 },
 });
 
 export default styles;

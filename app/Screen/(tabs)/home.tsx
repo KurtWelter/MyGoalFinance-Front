@@ -1,204 +1,289 @@
-import { LinearGradient } from "expo-linear-gradient";
-import { useFocusEffect, useRouter } from "expo-router";
-import React, { useCallback, useMemo, useState } from "react";
+// app/Screen/(tabs)/home.tsx
+import styles from '@/Styles/homeStyles';
+import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
+import { useRouter } from 'expo-router';
+import { StatusBar } from 'expo-status-bar';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
+  Linking,
+  Pressable,
   RefreshControl,
   ScrollView,
   Text,
-  TouchableOpacity,
-  View,
-} from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
-import Header from "../../../components/ui/Header";
-import api from "../../../constants/api";
-import { useAuth } from "../../../store/auth";
-import styles from "../../../Styles/homeStyles";
+  View
+} from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import api from '../../../constants/api';
+
+type SummaryMonth = {
+  month: string;
+  inc: number;
+  exp: number;
+  net: number;
+};
+
+type Rates = { base: 'CLP'; usd: number; eur: number; uf: number; updatedAt: string };
+type Article = { id: string; title: string; url: string; source?: string; published_at?: string | null };
+
+// ▼ NUEVO: tipo UI para metas + mapeo
+type GoalUI = { id: string; title: string; target: number; current: number };
+function mapGoalUI(g: any): GoalUI {
+  return {
+    id: String(g.id),
+    title: g.title || g.name || 'Meta',
+    target: Number(g.target_amount ?? 0),
+    current: Number(g.current_amount ?? 0),
+  };
+}
 
 export default function Home() {
   const router = useRouter();
-  const insets = useSafeAreaInsets();
-  const { user, refreshMe } = useAuth();
-
-  // Estado UI
-  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
-  // Datos
-  const [goalsCount, setGoalsCount] = useState<number | null>(null);
-  const [recsCount, setRecsCount] = useState<number | null>(null);
-  const [monthSpend, setMonthSpend] = useState<number | null>(null);
+  const [profile, setProfile] = useState<any>(null);
+  const [sum, setSum] = useState<SummaryMonth | null>(null);
+  const [rates, setRates] = useState<Rates | null>(null);
+  const [news, setNews] = useState<Article[]>([]);
+  // ▼ metas ahora tipadas con GoalUI
+  const [goals, setGoals] = useState<GoalUI[]>([]);
 
-  // Helpers de fecha (primer/último día del mes actual en YYYY-MM)
-  const range = useMemo(() => {
-    const now = new Date();
-    const yyyy = now.getFullYear();
-    const mm = String(now.getMonth() + 1).padStart(2, "0");
-    // si tu backend usa year-month, manda "YYYY-MM"
-    return { from: `${yyyy}-${mm}`, to: `${yyyy}-${mm}` };
-  }, []);
+  const firstName = useMemo(() => {
+    const n = profile?.name || '';
+    return n.split(' ')[0] || '¡Hola!';
+  }, [profile]);
 
   const load = useCallback(async () => {
     try {
-      setLoading(true);
+      setBusy(true);
+      const [p, s, r, nf, g] = await Promise.allSettled([
+        api.getProfile(),
+        api.summaryMonth(),           // KPIs mes actual
+        api.newsRates(),              // USD/EUR/UF
+        api.newsFeed(),               // últimas noticias
+        api.listGoals(),              // metas del usuario
+      ]);
 
-      // 1) Asegura user actualizado
-      await refreshMe();
-
-      // 2) Metas
-      const goals = await api.listGoals();
-      setGoalsCount(Array.isArray(goals) ? goals.length : 0);
-
-      // 3) Recomendaciones
-      const recs = await api.listRecommendations();
-      setRecsCount(Array.isArray(recs) ? recs.length : 0);
-
-      // 4) Transacciones del mes (suma gastos)
-      const txs = await api.listTransactions({ from: range.from, to: range.to });
-      const spend = (Array.isArray(txs) ? txs : []).reduce((acc, t: any) => {
-        // Asumimos gastos negativos o un flag category/type
-        const amount = Number(t.amount ?? 0);
-        // Si tus gastos vienen positivos con type='expense', ajusta esta línea:
-        return amount < 0 ? acc + Math.abs(amount) : acc;
-      }, 0);
-      setMonthSpend(spend);
-    } catch (e: any) {
-      Alert.alert("Error", e?.message ?? "No se pudo cargar tu panel");
+      if (p.status === 'fulfilled') setProfile(p.value);
+      if (s.status === 'fulfilled') {
+        const { inc, exp, net, month } = s.value as any;
+        setSum({ inc, exp, net, month });
+      }
+      if (r.status === 'fulfilled') setRates(r.value as Rates);
+      if (nf.status === 'fulfilled') setNews((nf.value as Article[]).slice(0, 3));
+      if (g.status === 'fulfilled') {
+        const arr = (g.value as any[] | undefined) ?? [];
+        setGoals(arr.slice(0, 3).map(mapGoalUI)); // ← mapeo a UI + limit 3
+      }
     } finally {
-      setLoading(false);
+      setBusy(false);
     }
-  }, [refreshMe, range.from, range.to]);
+  }, []);
 
-  useFocusEffect(
-    useCallback(() => {
-      let mounted = true;
-      (async () => {
-        if (!mounted) return;
-        await load();
-      })();
-      return () => {
-        mounted = false;
-      };
-    }, [load])
-  );
+  useEffect(() => {
+    load();
+  }, [load]);
 
   const onRefresh = useCallback(async () => {
+    setRefreshing(true);
     try {
-      setRefreshing(true);
       await load();
     } finally {
       setRefreshing(false);
     }
   }, [load]);
 
-  const userName =
-    user?.name?.trim?.() ||
-    (user?.email ? user.email.split("@")[0] : "Usuario");
-
   return (
-    <LinearGradient colors={["#f5f7fa", "#172e53ff"]} style={styles.container}>
-      {/* Header personalizado (usa nombre real) */}
-      <Header userName={userName} />
+    <SafeAreaView style={styles.safe} edges={['top', 'left', 'right']}>
+      <StatusBar style="light" />
+      {/* Header */}
+      <LinearGradient colors={['#2e3b55', '#1f2738']} style={styles.header}>
+        <View>
+          <Text style={styles.brand}>MyGoalFinance</Text>
+          <Text style={styles.h1}>¡Hola, {firstName}! 👋</Text>
+          <Text style={styles.subtitle}>Tu panel de control financiero</Text>
+        </View>
+      </LinearGradient>
 
-      {/* Contenido principal */}
+      {/* Content */}
       <ScrollView
-        contentContainerStyle={[styles.scrollContent, { paddingTop: insets.top }]}
-        refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
-        }
+        style={styles.scroll}
+        contentContainerStyle={styles.content}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
       >
-        {/* Bienvenida */}
-        <View style={styles.header}>
-          <Text style={styles.welcome}>¡Hola, {userName}! 👋</Text>
-          <Text style={styles.subtitle}>Este es tu panel de control financiero</Text>
+        {/* KPIs */}
+        <View style={styles.row}>
+          <KpiCard label="Ingresos" value={sum?.inc ?? 0} color="#26c281" icon="arrow-down-circle" />
+          <KpiCard label="Gastos" value={sum?.exp ?? 0} color="#ff5a5f" icon="arrow-up-circle" />
+          <KpiCard label="Neto" value={sum?.net ?? 0} color="#4dabf7" icon="wallet" />
         </View>
 
-        {/* Card Metas */}
-        <View style={styles.card}>
-          <Text style={styles.cardTitle}>Tus Metas 🎯</Text>
-          {loading ? (
-            <ActivityIndicator />
+        {/* Rates */}
+        <View style={styles.row}>
+          <RateCard title="Dólar (USD)" value={rates?.usd} hint="1 CLP → USD" />
+          <RateCard title="Euro (EUR)" value={rates?.eur} hint="1 CLP → EUR" />
+          <RateCard title="UF" value={rates?.uf} hint={rates ? `Act: ${new Date(rates.updatedAt).toLocaleDateString()}` : ''} />
+        </View>
+
+        {/* Quick actions */}
+        <View style={styles.quickRow}>
+          <QuickButton label="Añadir mov." icon="add-circle" onPress={() => router.push('/Screen/(tabs)/transactions')} />
+          <QuickButton label="Chatbot" icon="chatbubble-ellipses" onPress={() => router.push('/Screen/(tabs)/chatbot')} />
+          <QuickButton label="Metas" icon="flag" onPress={() => router.push('/Screen/(tabs)/goals')} />
+        </View>
+
+        {/* Goals preview – AHORA CON PROGRESO */}
+        <Section
+          title="Tus metas"
+          actionLabel="Ver metas"
+          onAction={() => router.push('/Screen/(tabs)/goals')}
+        >
+          {busy ? (
+            <Loader />
+          ) : goals.length === 0 ? (
+            <Empty text="Aún no tienes metas activas. ¡Crea una para empezar!" />
           ) : (
-            <Text style={styles.cardText}>
-              {goalsCount === null
-                ? "—"
-                : `Actualmente tienes ${goalsCount} meta${(goalsCount ?? 0) === 1 ? "" : "s"} activ${(goalsCount ?? 0) === 1 ? "a" : "as"}. ¡Sigue adelante!`}
-            </Text>
-          )}
-          <TouchableOpacity
-            style={styles.cardButton}
-            onPress={() => router.push("/Screen/(tabs)/goals")}
-          >
-            <Text style={styles.cardButtonText}>Ver metas</Text>
-          </TouchableOpacity>
-        </View>
+            goals.map((g) => {
+              const pct = g.target > 0 ? Math.min((g.current / g.target) * 100, 100) : 0;
+              return (
+                <Pressable
+                  key={g.id}
+                  onPress={() => router.push('/Screen/(tabs)/goals')}
+                  style={styles.tile}
+                >
+                  <Text style={styles.tileTitle}>{g.title}</Text>
+                  <Text style={styles.tileSubtitle}>
+                    Progreso: {formatCLP(g.current)} / {formatCLP(g.target)} CLP
+                  </Text>
 
-        {/* Card Recomendaciones */}
-        <View style={styles.card}>
-          <Text style={styles.cardTitle}>Recomendaciones 💡</Text>
-          {loading ? (
-            <ActivityIndicator />
+                  {/* Barra de progreso inline (sin depender de estilos externos) */}
+                  <View style={{ height: 8, backgroundColor: '#e2e8f015', borderRadius: 999, marginTop: 8, overflow: 'hidden' }}>
+                    <View style={{ width: `${pct}%`, height: '100%', backgroundColor: '#22c55e' }} />
+                  </View>
+                  <Text style={{ color: '#94a3b8', marginTop: 6 }}>{pct.toFixed(0)}% completado</Text>
+                </Pressable>
+              );
+            })
+          )}
+        </Section>
+
+        {/* News preview */}
+        <Section
+          title="Noticias financieras"
+          actionLabel="Ver noticias"
+          onAction={() => router.push('/Screen/(tabs)/news')}
+        >
+          {busy ? (
+            <Loader />
+          ) : news.length === 0 ? (
+            <Empty text="No hay noticias por ahora." />
           ) : (
-            <Text style={styles.cardText}>
-              {recsCount === null
-                ? "—"
-                : `Tienes ${recsCount} recomendación${(recsCount ?? 0) === 1 ? "" : "es"} nuevas.`}
-            </Text>
+            news.map((n) => (
+              <Pressable key={n.id} onPress={() => Linking.openURL(n.url)} style={styles.newsItem}>
+                <Text style={styles.newsTitle}>{n.title}</Text>
+                <Text style={styles.newsMeta}>{n.source || 'Fuente'} · {n.published_at ? new Date(n.published_at).toLocaleString() : ''}</Text>
+                <Text style={styles.newsLink}>Abrir</Text>
+              </Pressable>
+            ))
           )}
-          <TouchableOpacity
-            style={styles.cardButton}
-            onPress={() => router.push("/Screen/(tabs)/recommendation")}
-          >
-            <Text style={styles.cardButtonText}>Ver recomendaciones</Text>
-          </TouchableOpacity>
-        </View>
+        </Section>
 
-        {/* Card Resumen */}
-        <View style={styles.card}>
-          <Text style={styles.cardTitle}>Resumen 📊</Text>
-          {loading ? (
-            <ActivityIndicator />
-          ) : (
-            <Text style={styles.cardText}>
-              Tus gastos este mes:{" "}
-              {monthSpend === null ? "—" : `$${monthSpend.toLocaleString("es-CL")} CLP`}
-            </Text>
-          )}
-          <TouchableOpacity
-            style={styles.cardButton}
-            onPress={() => router.push("/Screen/(tabs)/recap")}
-          >
-            <Text style={styles.cardButtonText}>Ver resumen</Text>
-          </TouchableOpacity>
-        </View>
-
-        {/* Card Noticias */}
-        <View style={styles.card}>
-          <Text style={styles.cardTitle}>Noticias Financieras 📰</Text>
-          <Text style={styles.cardText}>Últimas noticias del mercado...</Text>
-          <TouchableOpacity
-            style={styles.cardButton}
-            onPress={() => router.push("/Screen/(tabs)/news")}
-          >
-            <Text style={styles.cardButtonText}>Ver más noticias</Text>
-          </TouchableOpacity>
-        </View>
-
-        {/* Card Chatbot */}
-        <View style={styles.card}>
-          <Text style={styles.cardTitle}>Asistente Financiero 🤖</Text>
-          <Text style={styles.cardText}>
-            Haz tus consultas rápidas aquí o abre el asistente completo.
-          </Text>
-          <TouchableOpacity
-            style={styles.cardButton}
-            onPress={() => router.push("/Screen/chatbot")}
-          >
-            <Text style={styles.cardButtonText}>Abrir Chatbot</Text>
-          </TouchableOpacity>
-        </View>
+        {/* Bottom padding para tabs */}
+        <View style={{ height: 24 }} />
       </ScrollView>
-    </LinearGradient>
+    </SafeAreaView>
   );
+}
+
+/* ----------------------------- UI helpers ----------------------------- */
+
+function KpiCard({ label, value, color, icon }: { label: string; value: number; color: string; icon: keyof typeof Ionicons.glyphMap }) {
+  return (
+    <View style={styles.kpi}>
+      <View style={[styles.kpiIconWrap, { backgroundColor: color + '22' }]}>
+        <Ionicons name={icon} size={20} color={color} />
+      </View>
+      <Text style={styles.kpiLabel}>{label}</Text>
+      <Text style={[styles.kpiValue, { color }]}>{formatCLP(value)}</Text>
+    </View>
+  );
+}
+
+function RateCard({ title, value, hint }: { title: string; value?: number | null; hint?: string }) {
+  return (
+    <View style={styles.rate}>
+      <Text style={styles.rateTitle}>{title}</Text>
+      <Text style={styles.rateValue}>{value != null ? formatRate(value) : '—'}</Text>
+      {!!hint && <Text style={styles.rateHint}>{hint}</Text>}
+    </View>
+  );
+}
+
+function QuickButton({ label, icon, onPress }: { label: string; icon: keyof typeof Ionicons.glyphMap; onPress: () => void }) {
+  return (
+    <Pressable onPress={onPress} style={styles.quickBtn}>
+      <Ionicons name={icon} size={22} color="#1f2738" />
+      <Text style={styles.quickTxt}>{label}</Text>
+    </Pressable>
+  );
+}
+
+function Section({
+  title,
+  actionLabel,
+  onAction,
+  children,
+}: {
+  title: string;
+  actionLabel?: string;
+  onAction?: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <View style={styles.section}>
+      <View style={styles.sectionTop}>
+        <Text style={styles.sectionTitle}>{title}</Text>
+        {actionLabel && onAction ? (
+          <Pressable onPress={onAction} hitSlop={8}>
+            <Text style={styles.sectionAction}>{actionLabel}</Text>
+          </Pressable>
+        ) : null}
+      </View>
+      <View>{children}</View>
+    </View>
+  );
+}
+
+function Loader() {
+  return (
+    <View style={styles.loader}>
+      <ActivityIndicator />
+    </View>
+  );
+}
+
+function Empty({ text }: { text: string }) {
+  return (
+    <View style={styles.empty}>
+      <Text style={styles.emptyTxt}>{text}</Text>
+    </View>
+  );
+}
+
+/* ------------------------------ helpers ------------------------------ */
+
+function formatCLP(n: number) {
+  try {
+    return n.toLocaleString('es-CL', { style: 'currency', currency: 'CLP', maximumFractionDigits: 0 });
+  } catch {
+    return `$${Math.round(n)}`;
+  }
+}
+function formatRate(n: number) {
+  // n: valor unitario (ej: 0.001051 USD por CLP)
+  if (n >= 1000) return n.toLocaleString('en-US', { maximumFractionDigits: 3 });
+  if (n >= 1) return n.toFixed(3);
+  return n.toPrecision(3);
 }

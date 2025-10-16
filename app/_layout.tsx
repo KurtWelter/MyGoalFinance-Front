@@ -1,16 +1,37 @@
+// app/_layout.tsx
+import * as Notifications from 'expo-notifications';
 import { Slot, useRouter, useSegments } from 'expo-router';
 import React, { useEffect } from 'react';
+import { Platform } from 'react-native';
+
 import { AuthProvider, useAuth } from '../store/auth';
+import { registerForPush } from '../utils/registerPush';
+
+// ─────────────────────────────────────────────
+// Handler global: define cómo mostrar notificaciones
+// (esto va a nivel de módulo, fuera de componentes)
+// ─────────────────────────────────────────────
+Notifications.setNotificationHandler({
+  handleNotification: async () => ({
+    shouldShowAlert: true,
+    shouldPlaySound: false,
+    shouldSetBadge: false,
+
+    // Nuevos flags requeridos por el tipo NotificationBehavior (iOS)
+    shouldShowBanner: true,
+    shouldShowList: true,
+  }),
+});
 
 function AuthGate() {
   const { token, loading } = useAuth();
   const router = useRouter();
   const segments = useSegments();
 
-  // 👇 Forzamos a string para evitar el error TS2367
+  // Forzamos a string para evitar TS2367 y reactividad confiable
   const s0 = String(segments[0] ?? '');
   const s1 = String(segments[1] ?? '');
-  const s2 = String(segments[2] ?? ''); // por si lo necesitas
+  const s2 = String(segments[2] ?? '');
 
   useEffect(() => {
     if (loading) return;
@@ -39,13 +60,28 @@ function AuthGate() {
       }
       // Si ya está en tabs o questionnaire, no hacer nada
     }
-  // usa s0/s1 (ya son strings) para que se reactive bien
   }, [s0, s1, token, loading, router]);
 
   return <Slot />;
 }
 
 export default function RootLayout() {
+  useEffect(() => {
+    // Android: crea el canal de notificaciones una vez
+    if (Platform.OS === 'android') {
+      Notifications.setNotificationChannelAsync('default', {
+        name: 'default',
+        importance: Notifications.AndroidImportance.DEFAULT,
+      }).catch(() => {});
+    }
+
+    // Registrar el dispositivo para push y enviar token al backend
+    // (si todavía no creaste utils/registerPush.ts, crea ese archivo primero)
+    registerForPush().catch((e) => {
+      console.log('[push] register failed:', e?.message || e);
+    });
+  }, []);
+
   return (
     <AuthProvider>
       <AuthGate />

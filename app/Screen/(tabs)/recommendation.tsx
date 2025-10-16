@@ -154,7 +154,7 @@ export default function Recommendation() {
   const showSpinner = loadingUser || loadingRecs;
 
   return (
-    <LinearGradient colors={["#526074ff", "#312d69ff"]} style={{ flex: 1 }}>
+    <LinearGradient colors={["#2e3b55", "#1f2738"]} style={{ flex: 1 }}>
       <View style={{ padding: 20, flex: 1 }}>
         <Text style={{ fontSize: 24, fontWeight: "800", color: "#fff" }}>
           💡 Recomendaciones

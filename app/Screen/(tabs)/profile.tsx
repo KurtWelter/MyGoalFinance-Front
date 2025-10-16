@@ -68,7 +68,7 @@ export default function Profile() {
   };
 
   return (
-    <LinearGradient colors={["#526074ff", "#312d69ff"]} style={styles.container}>
+    <LinearGradient colors={["#2e3b55", "#1f2738"]} style={styles.container}>
       {/* Avatar */}
       <View style={styles.avatarContainer}>
         <Image source={{ uri: avatarUri }} style={styles.avatar} />

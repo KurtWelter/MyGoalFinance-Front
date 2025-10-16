@@ -279,49 +279,6 @@ export default function Dashboard() {
         </View>
       )}
 
-      {/* Pie: Gastos por categoría (con % y ocultando <5%) */}
-      {!busy && (
-        <View style={styles.card}>
-          <Text style={styles.cardTitle}>Gastos por categoría</Text>
-          {pieDataByCategory.length === 0 ? (
-            <Text style={styles.emptyText}>Sin datos de categorías.</Text>
-          ) : (
-            (() => {
-              const totalCat = pieDataByCategory.reduce(
-                (s, d) => s + Number(d.y || 0),
-                0
-              );
-              return (
-                <VictoryPie
-                  width={chartW}
-                  height={pieH}
-                  data={pieDataByCategory}
-                  x="x"
-                  y="y"
-                  innerRadius={Math.round(pieRadius * 0.55)}
-                  padAngle={1}
-                  labelRadius={Math.round(pieRadius * 0.95)}
-                  style={{ labels: vxLabel }}
-                  colorScale={[
-                    palette.pieExpense,
-                    '#60a5fa',
-                    '#f59e0b',
-                    '#34d399',
-                    '#a78bfa',
-                    '#f472b6',
-                    '#94a3b8',
-                  ]}
-                  labels={({ datum }) => {
-                    const p = pct(Number(datum.y || 0), totalCat);
-                    return p >= 5 ? `${datum.x}\n${p}%` : '';
-                  }}
-                />
-              );
-            })()
-          )}
-        </View>
-      )}
-
       {/* Pie: Distribución Ingresado / Gastado / Ahorrado (con %) */}
       {!busy && (
         <View style={styles.card}>
