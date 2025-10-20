@@ -1,107 +1,44 @@
-import { StyleSheet } from "react-native";
-const goalsStyles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-  content: {
-    padding: 20,
-  },
-  backButton: {
-    alignSelf: "flex-start",
-    marginBottom: 15,
-    paddingVertical: 6,
-    paddingHorizontal: 12,
-    backgroundColor: "#312d69",
-    borderRadius: 8,
-  },
-  backButtonText: {
-    color: "white",
-    fontSize: 14,
-    fontWeight: "600",
-  },
-  title: {
-    fontSize: 26,
-    fontWeight: "bold",
-    color: "white",
-    marginBottom: 5,
-    textAlign: "center",
-  },
-  subtitle: {
-    fontSize: 16,
-    color: "#ddd",
-    marginBottom: 20,
-    textAlign: "center",
-  },
-  card: {
-    backgroundColor: "white",
-    borderRadius: 15,
-    padding: 20,
-    marginBottom: 20,
-    shadowColor: "#000",
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 5,
-  },
-  cardTitle: {
-    fontSize: 18,
-    fontWeight: "bold",
-    marginBottom: 10,
-    color: "#312d69",
-  },
-  cardText: {
-    fontSize: 15,
-    marginBottom: 10,
-    color: "#444",
-  },
+// Styles/goalsStyles.ts
+import { StyleSheet } from 'react-native';
+import { colors, radius, spacing } from '../constants/theme';
+
+export default StyleSheet.create({
+  safe: { flex: 1, backgroundColor: colors.bg },
+
+  header: { padding: spacing.lg, paddingBottom: spacing.lg + 8 },
+  brand: { color: '#fff', fontSize: 22, fontWeight: '800' as const },
+  subtitle: { color: '#cbd5e1', marginTop: 4 },
+
+  content: { padding: spacing.md, gap: spacing.md },
+
   input: {
+    backgroundColor: '#111827',
+    borderColor: '#1f2937',
     borderWidth: 1,
-    borderColor: "#ccc",
-    borderRadius: 8,
-    padding: 10,
+    borderRadius: radius.sm,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    color: colors.text,
     marginBottom: 10,
   },
-  button: {
-    backgroundColor: "#ff9800",
-    padding: 12,
-    borderRadius: 8,
-    alignItems: "center",
-  },
-  buttonText: {
-    color: "white",
-    fontWeight: "bold",
-    fontSize: 15,
-  },
-  progressBar: {
-    height: 10,
-    backgroundColor: "#eee",
-    borderRadius: 5,
-    overflow: "hidden",
+
+  goalTitle: { color: colors.text, fontSize: 16, fontWeight: '700' as const },
+  goalMeta: { color: '#cbd5e1', marginTop: 2 },
+  goalPct: { color: colors.muted, marginTop: 2 },
+
+  chipsRow: {
+    flexDirection: 'row' as const,
+    gap: 8,
     marginTop: 10,
   },
-  progressFill: {
-    height: "100%",
-    backgroundColor: "#4caf50",
+  chip: {
+    backgroundColor: '#1a2236',
+    borderColor: '#22304b',
+    borderWidth: 1,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: radius.sm,
   },
-  progressText: {
-    fontSize: 14,
-    marginTop: 5,
-    color: "#666",
-  },
-  aportContainer: {
-    flexDirection: "row",
-    marginTop: 10,
-  },
-  aportButton: {
-    backgroundColor: "#312d69",
-    padding: 8,
-    borderRadius: 8,
-    marginRight: 10,
-  },
-  aportButtonText: {
-    color: "white",
-    fontWeight: "600",
-    fontSize: 14,
-  },
+  chipText: { color: '#dbeafe', fontWeight: '700' as const },
 });
 
-export default goalsStyles;

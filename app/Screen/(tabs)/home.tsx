@@ -17,6 +17,13 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import api from '../../../constants/api';
 
+// ✨ NUEVO: UI kit y tema
+import Button from '../../../components/ui/Button';
+import Card from '../../../components/ui/Card';
+import ProgressBar from '../../../components/ui/ProgressBar';
+import SectionUI from '../../../components/ui/Section';
+import { colors } from '../../../constants/theme';
+
 type SummaryMonth = {
   month: string;
   inc: number;
@@ -134,42 +141,35 @@ export default function Home() {
           <QuickButton label="Metas" icon="flag" onPress={() => router.push('/Screen/(tabs)/goals')} />
         </View>
 
-        {/* Goals preview – AHORA CON PROGRESO */}
-        <Section
+        {/* Goals preview – NUEVO BLOQUE usando el UI kit */}
+        <SectionUI
           title="Tus metas"
-          actionLabel="Ver metas"
-          onAction={() => router.push('/Screen/(tabs)/goals')}
+          action={
+            <Button variant="link" onPress={() => router.push('/Screen/(tabs)/goals')}>
+              Ver metas
+            </Button>
+          }
         >
           {busy ? (
-            <Loader />
+            <Card><Text style={{ color: '#94a3b8' }}>Cargando…</Text></Card>
           ) : goals.length === 0 ? (
-            <Empty text="Aún no tienes metas activas. ¡Crea una para empezar!" />
+            <Card>
+              <Text style={{ color: '#94a3b8' }}>
+                Aún no tienes metas activas. ¡Crea una para empezar!
+              </Text>
+            </Card>
           ) : (
-            goals.map((g) => {
-              const pct = g.target > 0 ? Math.min((g.current / g.target) * 100, 100) : 0;
-              return (
-                <Pressable
-                  key={g.id}
-                  onPress={() => router.push('/Screen/(tabs)/goals')}
-                  style={styles.tile}
-                >
-                  <Text style={styles.tileTitle}>{g.title}</Text>
-                  <Text style={styles.tileSubtitle}>
-                    Progreso: {formatCLP(g.current)} / {formatCLP(g.target)} CLP
-                  </Text>
-
-                  {/* Barra de progreso inline (sin depender de estilos externos) */}
-                  <View style={{ height: 8, backgroundColor: '#e2e8f015', borderRadius: 999, marginTop: 8, overflow: 'hidden' }}>
-                    <View style={{ width: `${pct}%`, height: '100%', backgroundColor: '#22c55e' }} />
-                  </View>
-                  <Text style={{ color: '#94a3b8', marginTop: 6 }}>{pct.toFixed(0)}% completado</Text>
-                </Pressable>
-              );
-            })
+            goals.map((g) => (
+              <GoalTile
+                key={g.id}
+                goal={g}
+                onPress={() => router.push('/Screen/(tabs)/goals')}
+              />
+            ))
           )}
-        </Section>
+        </SectionUI>
 
-        {/* News preview */}
+        {/* News preview (sigue usando tu Section local) */}
         <Section
           title="Noticias financieras"
           actionLabel="Ver noticias"
@@ -286,4 +286,25 @@ function formatRate(n: number) {
   if (n >= 1000) return n.toLocaleString('en-US', { maximumFractionDigits: 3 });
   if (n >= 1) return n.toFixed(3);
   return n.toPrecision(3);
+}
+
+/* --------------------------- Goal tile (nuevo) --------------------------- */
+function GoalTile({ goal, onPress }: { goal: GoalUI; onPress: () => void }) {
+  const title = goal.title;
+  const target = goal.target;
+  const current = goal.current;
+  const pct = target > 0 ? Math.min(100, Math.round((current / target) * 100)) : 0;
+
+  return (
+    <Card>
+      <Pressable onPress={onPress} style={{ gap: 8 }}>
+        <Text style={{ color: colors.text, fontSize: 16, fontWeight: '700' as const }}>{title}</Text>
+        <Text style={{ color: '#cbd5e1' }}>
+          Progreso: {formatCLP(current)} / {formatCLP(target)}
+        </Text>
+        <ProgressBar value={pct} />
+        <Text style={{ color: '#94a3b8' }}>{pct}% completado</Text>
+      </Pressable>
+    </Card>
+  );
 }

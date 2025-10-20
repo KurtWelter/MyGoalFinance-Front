@@ -18,7 +18,7 @@ type ReqOpts = {
   retryDelayMs?: number;
 };
 
-/** 
+/**
  * Resolver de base URL multiplataforma.
  * - Prioriza API_URL que exportas desde ./config
  * - Si no está, usa expo.extra.apiUrl o EXPO_PUBLIC_API_URL
@@ -27,7 +27,7 @@ type ReqOpts = {
  */
 function resolveApiUrl(configUrl?: string) {
   const extra = (Constants as any)?.expoConfig?.extra?.apiUrl;
-  const env   = process.env.EXPO_PUBLIC_API_URL;
+  const env = process.env.EXPO_PUBLIC_API_URL;
 
   if (Platform.OS === 'web') {
     const host =
@@ -66,13 +66,17 @@ async function req<T>(
     retryDelayMs = 600,
   }: ReqOpts = {}
 ): Promise<T> {
-  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  // ✅ Soporte para FormData (multipart) sin romper JSON
+  const isForm = (typeof FormData !== 'undefined') && (body instanceof FormData);
+
+  const headers: Record<string, string> = {};
+  if (!isForm) headers['Content-Type'] = 'application/json';
   if (auth) {
     const token = await AsyncStorage.getItem('token');
     if (token) headers.Authorization = `Bearer ${token}`;
   }
 
-  // ⬇️ ÚNICA línea cambiada: usar BASE_URL en vez de API_URL
+  // ⬇️ Usar BASE_URL en vez de API_URL
   const url = `${BASE_URL}${API_PREFIX}${path}`;
 
   // Intento con reintentos controlados (solo red/timeout/5xx)
@@ -88,7 +92,7 @@ async function req<T>(
       const res = await fetch(url, {
         method,
         headers,
-        body: body ? JSON.stringify(body) : undefined,
+        body: body ? (isForm ? body : JSON.stringify(body)) : undefined,
         signal: controller.signal,
       });
 
@@ -227,6 +231,35 @@ export const api = {
   getProfile: () => req<any>('/profile', { auth: true }),
   updateProfile: (p: any) =>
     req<any>('/profile', { method: 'PUT', body: p, auth: true }),
+
+  /** ⬇️ Subir avatar (web: Blob/File; nativo: { uri, name, type }) */
+  uploadAvatar: async (uri: string) => {
+    const fd = new FormData();
+
+    if (Platform.OS === 'web') {
+      const resp = await fetch(uri);
+      const blob = await resp.blob();
+      const file = new File([blob], 'avatar.jpg', {
+        type: blob.type || 'image/jpeg',
+      });
+      fd.append('file', file);
+    } else {
+      const ext = (uri.split('.').pop() || 'jpg').toLowerCase();
+      const mime = ext === 'png' ? 'image/png' : 'image/jpeg';
+      fd.append('file', {
+        uri,
+        name: `avatar.${ext}`,
+        type: mime,
+      } as any);
+    }
+
+    return req<{ url: string }>('/profile/avatar', {
+      method: 'POST',
+      body: fd,
+      auth: true,
+      timeoutMs: 20_000,
+    });
+  },
 
   // GOALS
   listGoals: () => req<any[]>('/goals', { auth: true }),

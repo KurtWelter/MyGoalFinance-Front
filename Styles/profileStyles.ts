@@ -1,81 +1,160 @@
-import { StyleSheet } from "react-native";
+// Styles/profileStyles.ts
+import { StyleSheet } from 'react-native';
 
-const profileStyles = StyleSheet.create({
-  container: {
+export const ACCENT = '#ffb300';
+
+const styles = StyleSheet.create({
+  safe: {
     flex: 1,
+    backgroundColor: '#0f172a',
+  },
+  header: {
     padding: 20,
-    alignItems: "center",
+    paddingBottom: 40,
   },
-  avatarContainer: {
-    alignItems: "center",
-    marginTop: 50,
-    marginBottom: 30,
+  brand: {
+    color: '#cbd5e1',
+    fontSize: 14,
+    marginBottom: 6,
   },
-  avatar: {
+  h1: {
+    color: '#fff',
+    fontSize: 26,
+    fontWeight: '800' as const,
+  },
+  subtitle: {
+    color: '#cbd5e1',
+    marginTop: 4,
+  },
+  scrollContent: {
+    padding: 16,
+    gap: 16,
+  },
+
+  card: {
+    backgroundColor: '#0b1324',
+    borderRadius: 14,
+    padding: 14,
+  },
+
+  centerCol: {
+    alignItems: 'center' as const,
+    gap: 10,
+  },
+
+  avatarImg: {
     width: 120,
     height: 120,
     borderRadius: 60,
-    borderWidth: 3,
-    borderColor: "#fff",
+    backgroundColor: '#0b1324',
   },
-  userName: {
-    marginTop: 10,
-    fontSize: 22,
-    fontWeight: "bold",
-    color: "white",
+  avatarFallback: {
+    width: 120,
+    height: 120,
+    borderRadius: 60,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    backgroundColor: '#334155',
   },
-  card: {
-    width: "100%",
-    backgroundColor: "white",
-    borderRadius: 15,
-    padding: 20,
-    marginBottom: 25,
-    shadowColor: "#000",
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 5,
+  avatarInitials: {
+    color: '#fff',
+    fontSize: 36,
+    fontWeight: '700' as const,
+  },
+  fab: {
+    position: 'absolute' as const,
+    right: -6,
+    bottom: -6,
+    backgroundColor: ACCENT,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    borderWidth: 2,
+    borderColor: '#1f2738',
+    elevation: 2,
+  },
+
+  name: {
+    color: '#fff',
+    fontSize: 18,
+    fontWeight: '700' as const,
+  },
+  meta: {
+    color: '#94a3b8',
+  },
+
+  rowHeader: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    justifyContent: 'space-between' as const,
+    marginBottom: 8,
   },
   sectionTitle: {
-    fontSize: 18,
-    fontWeight: "bold",
-    marginBottom: 15,
-    color: "#312d69",
-    textAlign: "center",
-  },
-  infoRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    marginBottom: 12,
-  },
-  label: {
+    color: '#e2e8f0',
     fontSize: 16,
-    fontWeight: "600",
-    color: "#444",
+    fontWeight: '700' as const,
   },
-  value: {
-    fontSize: 16,
-    fontWeight: "400",
-    color: "#666",
-  },
-  button: {
-    backgroundColor: "#ff9800",
-    padding: 15,
-    borderRadius: 12,
-    width: "100%",
-    alignItems: "center",
-    marginBottom: 10,
-  },
-  buttonText: {
-    color: "white",
-    fontWeight: "bold",
-    fontSize: 16,
-  },
-  link: {
-    marginTop: 10,
+  linkBtn: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: 6,
   },
   linkText: {
-    color: "white",
-    fontSize: 15,
+    color: ACCENT,
+    fontWeight: '700' as const,
+  },
+
+  itemRow: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    justifyContent: 'space-between' as const,
+    paddingVertical: 10,
+    borderBottomColor: '#111827',
+    borderBottomWidth: 1,
+  },
+  itemLabel: {
+    color: '#94a3b8',
+  },
+  itemValue: {
+    color: '#e2e8f0',
+    fontWeight: '600' as const,
+  },
+
+  rowBtns: {
+    flexDirection: 'row' as const,
+    gap: 12,
+  },
+
+  btnPrimary: {
+    backgroundColor: ACCENT,
+    borderRadius: 10,
+    paddingVertical: 12,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    gap: 6,
+    flexDirection: 'row' as const,
+  },
+  btnPrimaryText: {
+    color: '#1f2738',
+    fontWeight: '800' as const,
+  },
+  btnGhost: {
+    backgroundColor: '#0b1324',
+    borderColor: '#1f2937',
+    borderWidth: 1,
+    borderRadius: 10,
+    paddingVertical: 12,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    gap: 6,
+    flexDirection: 'row' as const,
+  },
+  btnGhostText: {
+    color: '#cbd5e1',
+    fontWeight: '700' as const,
   },
 });
-export default profileStyles;
+
+export default styles;

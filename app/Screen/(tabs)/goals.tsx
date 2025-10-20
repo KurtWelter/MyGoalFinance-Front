@@ -1,250 +1,215 @@
-// app/Screen/goals.tsx
-import Constants from 'expo-constants';
+// app/Screen/(tabs)/goals.tsx
+import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-import { useRouter } from 'expo-router';
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
+  ActivityIndicator,
   Alert,
+  Pressable,
+  RefreshControl,
   ScrollView,
   Text,
   TextInput,
-  TouchableOpacity,
   View,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+
+import Button from '../../../components/ui/Button'; //button
+import Card from '../../../components/ui/Card'; //card
+import ProgressBar from '../../../components/ui/ProgressBar'; //progesbar
+import Section from '../../../components/ui/Section'; //section
+import api from '../../../constants/api';
+import { colors } from '../../../constants/theme'; //thme
 import styles from '../../../Styles/goalsStyles';
-import { useAuth } from '../../../store/auth';
 
-// ------------------------------
-// API URL helper
-// ------------------------------
-function getApiUrl() {
-  const extra = (Constants as any)?.expoConfig?.extra?.apiUrl;
-  const env = process.env.EXPO_PUBLIC_API_URL;
-  const url = extra || env;
-  if (!url) {
-    console.warn('[api] Falta EXPO_PUBLIC_API_URL o expo.extra.apiUrl; usando http://localhost:3000');
-  }
-  return url ?? 'http://localhost:3000';
-}
-
-const API_URL = getApiUrl();
-const GOALS_URL = `${API_URL}/api/goals`;
-console.log('[api] GOALS_URL =', GOALS_URL);
-
-// ------------------------------
-// Helpers
-// ------------------------------
-type ApiGoal = {
-  id: number;
+type Goal = {
+  id: string | number;
   title: string;
   description?: string | null;
-  target_amount: number | string;
-  current_amount: number | string;
+  target_amount: number;
+  current_amount: number;
   deadline?: string | null;
-  created_at?: string;
 };
 
-type GoalUI = {
-  id: string;
-  title: string;
-  target: number;
-  current: number;
-};
+export default function GoalsScreen() {
+  // form
+  const [title, setTitle] = useState('');
+  const [amountRaw, setAmountRaw] = useState('');
+  const amount = useMemo(() => toNumber(amountRaw), [amountRaw]);
 
-const CLP = new Intl.NumberFormat('es-CL', {
-  style: 'currency',
-  currency: 'CLP',
-  maximumFractionDigits: 0,
-});
+  // data
+  const [busy, setBusy] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const [goals, setGoals] = useState<Goal[]>([]);
 
-function mapApiToUI(g: ApiGoal): GoalUI {
-  return {
-    id: String(g.id),
-    title: g.title,
-    target: Number(g.target_amount ?? 0),
-    current: Number(g.current_amount ?? 0),
-  };
-}
-
-// ------------------------------
-// Component
-// ------------------------------
-export default function Goals() {
-  const router = useRouter();
-  const { token } = useAuth();
-
-  const [goals, setGoals] = useState<GoalUI[]>([]);
-  const [loading, setLoading] = useState(false);
-
-  const [newGoal, setNewGoal] = useState('');
-  const [targetAmount, setTargetAmount] = useState('');
-
-  // GET /api/goals
-  const fetchGoals = useCallback(async () => {
-    if (!token) return;
-    setLoading(true);
+  const load = useCallback(async () => {
     try {
-      const res = await fetch(GOALS_URL, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      const txt = await res.text();
-      console.log('[api] GET /goals ->', res.status, txt);
-
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const json = JSON.parse(txt) as ApiGoal[];
-      setGoals((json || []).map(mapApiToUI));
+      setBusy(true);
+      const rows = await api.listGoals();
+      setGoals(rows as Goal[]);
     } catch (e: any) {
       console.log('[goals] fetch error', e?.message || e);
-      Alert.alert('Error', 'No se pudieron cargar tus metas.');
+      Alert.alert('Ups', e?.message || 'No se pudieron cargar tus metas.');
     } finally {
-      setLoading(false);
+      setBusy(false);
     }
-  }, [token]);
+  }, []);
 
   useEffect(() => {
-    fetchGoals();
-  }, [fetchGoals]);
+    load();
+  }, [load]);
 
-  // POST /api/goals
-  const handleAddGoal = async () => {
-    if (!token) return Alert.alert('Sesión', 'Debes iniciar sesión.');
-    if (!newGoal.trim() || !targetAmount.trim()) {
-      Alert.alert('Error', 'Debes ingresar una meta y un monto');
-      return;
-    }
-
-    const target_amount = Number(targetAmount);
-    if (Number.isNaN(target_amount) || target_amount <= 0) {
-      Alert.alert('Monto objetivo inválido');
-      return;
-    }
-
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
     try {
-      const res = await fetch(GOALS_URL, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({ title: newGoal.trim(), target_amount }),
+      await load();
+    } finally {
+      setRefreshing(false);
+    }
+  }, [load]);
+
+  const onCreate = async () => {
+    if (!title.trim()) return Alert.alert('Falta el título', 'Escribe un nombre para tu meta.');
+    if (!amount || amount <= 0) {
+      return Alert.alert('Monto inválido', 'Ingresa el monto objetivo en CLP.');
+    }
+    try {
+      setCreating(true);
+      await api.createGoal({
+        title: title.trim(),
+        target_amount: amount,
+        description: null,
+        deadline: null,
       });
-
-      const txt = await res.text();
-      console.log('[api] POST /goals ->', res.status, txt);
-
-      if (!res.ok) {
-        let detail = txt;
-        try {
-          detail = JSON.parse(txt)?.detail ?? txt;
-        } catch {}
-        throw new Error(detail || `HTTP ${res.status}`);
-      }
-
-      setNewGoal('');
-      setTargetAmount('');
-      await fetchGoals();
+      setTitle('');
+      setAmountRaw('');
+      await load();
+      Alert.alert('Listo', 'Tu meta fue creada.');
     } catch (e: any) {
       Alert.alert('Error', e?.message || 'No se pudo crear la meta');
+    } finally {
+      setCreating(false);
     }
   };
 
-  // POST /api/goals/:id/contribute
-  const handleAddContribution = async (goalId: string, amount: number) => {
-    if (!token) return Alert.alert('Sesión', 'Debes iniciar sesión.');
+  const onQuickAdd = async (goalId: string | number, add: number) => {
     try {
-      const res = await fetch(`${GOALS_URL}/${goalId}/contribute`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({ amount }),
-      });
-      const txt = await res.text();
-      console.log('[api] POST /goals/:id/contribute ->', res.status, txt);
-
-      if (!res.ok) {
-        let detail = txt;
-        try {
-          detail = JSON.parse(txt)?.detail ?? txt;
-        } catch {}
-        throw new Error(detail || `HTTP ${res.status}`);
-      }
-
-      await fetchGoals();
+      await api.addContribution(String(goalId), { amount: add, note: 'Aporte rápido' });
+      await load();
     } catch (e: any) {
-      Alert.alert('Error', e?.message || 'No se pudo registrar el aporte');
+      Alert.alert('Error', e?.message || 'No se pudo registrar el aporte.');
     }
   };
 
   return (
-    <LinearGradient colors={['#2e3b55', '#1f2738']} style={styles.container}>
-      <ScrollView contentContainerStyle={styles.content}>
-        <Text style={styles.title}>🎯 Mis Metas Financieras</Text>
-        <Text style={styles.subtitle}>
-          Define, visualiza y sigue el progreso de tus objetivos.
-        </Text>
+    <SafeAreaView style={styles.safe} edges={['top', 'left', 'right']}>
+      <LinearGradient colors={['#2e3b55', '#1f2738']} style={styles.header}>
+        <View>
+          <Text style={styles.brand}>Mis Metas Financieras</Text>
+          <Text style={styles.subtitle}>Define, visualiza y sigue el progreso de tus objetivos.</Text>
+        </View>
+      </LinearGradient>
 
-        {/* Formulario nueva meta */}
-        <View style={styles.card}>
-          <Text style={styles.cardTitle}>Agregar nueva meta</Text>
+      <ScrollView
+        style={{ flex: 1 }}
+        contentContainerStyle={styles.content}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+      >
+        {/* Crear nueva meta */}
+        <Card title="Agregar nueva meta">
           <TextInput
             style={styles.input}
             placeholder="Ej: Viaje a Europa"
-            value={newGoal}
-            onChangeText={setNewGoal}
+            placeholderTextColor={colors.muted}
+            value={title}
+            onChangeText={setTitle}
           />
           <TextInput
             style={styles.input}
             placeholder="Monto objetivo (CLP)"
+            placeholderTextColor={colors.muted}
             keyboardType="numeric"
-            value={targetAmount}
-            onChangeText={setTargetAmount}
+            value={amountRaw}
+            onChangeText={setAmountRaw}
           />
-          <TouchableOpacity style={styles.button} onPress={handleAddGoal} disabled={loading}>
-            <Text style={styles.buttonText}>➕ Agregar Meta</Text>
-          </TouchableOpacity>
-        </View>
+          <Button
+            onPress={onCreate}
+            loading={creating}
+            style={{ marginTop: 8 }}
+          >
+            <Ionicons name="add-circle" size={18} color={colors.accentDark} />
+            Agregar Meta
+          </Button>
+        </Card>
 
         {/* Lista de metas */}
-        {goals.map((goal) => {
-          const progress = goal.target > 0 ? Math.min((goal.current / goal.target) * 100, 100) : 0;
-          return (
-            <View key={goal.id} style={styles.card}>
-              <Text style={styles.cardTitle}>{goal.title}</Text>
-              <Text style={styles.cardText}>
-                Progreso: {CLP.format(goal.current)} / {CLP.format(goal.target)} CLP
+        <Section title="Tus metas">
+          {busy ? (
+            <Card><ActivityIndicator /></Card>
+          ) : goals.length === 0 ? (
+            <Card>
+              <Text style={{ color: colors.muted }}>
+                Aún no tienes metas activas. ¡Crea una para empezar!
               </Text>
+            </Card>
+          ) : (
+            goals.map((g) => (
+              <GoalItem key={g.id} goal={g} onQuickAdd={onQuickAdd} />
+            ))
+          )}
+        </Section>
 
-              {/* Barra de progreso */}
-              <View style={styles.progressBar}>
-                <View style={[styles.progressFill, { width: `${progress}%` }]} />
-              </View>
-              <Text style={styles.progressText}>{progress.toFixed(0)}% completado</Text>
-
-              {/* Botones de aporte rápido */}
-              <View style={styles.aportContainer}>
-                {[10000, 20000, 50000].map((amt) => (
-                  <TouchableOpacity
-                    key={amt}
-                    style={styles.aportButton}
-                    onPress={() => handleAddContribution(goal.id, amt)}
-                    disabled={loading}
-                  >
-                    <Text style={styles.aportButtonText}>+{CLP.format(amt)}</Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-            </View>
-          );
-        })}
-
-        {!goals.length && !loading ? (
-          <Text style={{ color: '#cbd5e1', textAlign: 'center', marginTop: 16 }}>
-            Aún no tienes metas. Crea tu primera. ✨
-          </Text>
-        ) : null}
+        <View style={{ height: 24 }} />
       </ScrollView>
-    </LinearGradient>
+    </SafeAreaView>
   );
+}
+
+/* ----------------------- Item de meta ----------------------- */
+function GoalItem({
+  goal,
+  onQuickAdd,
+}: {
+  goal: Goal;
+  onQuickAdd: (id: string | number, add: number) => void;
+}) {
+  const target = Number(goal.target_amount || 0);
+  const current = Number(goal.current_amount || 0);
+  const pct = target > 0 ? Math.min(100, Math.round((current / target) * 100)) : 0;
+
+  return (
+    <Card>
+      <Text style={styles.goalTitle}>{goal.title}</Text>
+      <Text style={styles.goalMeta}>
+        Progreso: {formatCLP(current)} / {formatCLP(target)} CLP
+      </Text>
+
+      <View style={{ marginVertical: 6 }}>
+        <ProgressBar value={pct} />
+      </View>
+      <Text style={styles.goalPct}>{pct}% completado</Text>
+
+      <View style={styles.chipsRow}>
+        {[10_000, 20_000, 50_000].map((n) => (
+          <Pressable key={n} onPress={() => onQuickAdd(goal.id, n)} style={styles.chip}>
+            <Text style={styles.chipText}>+{formatCLP(n)}</Text>
+          </Pressable>
+        ))}
+      </View>
+    </Card>
+  );
+}
+
+/* ------------------------- helpers ------------------------- */
+function toNumber(s: string) {
+  const n = Number(String(s).replace(/[^\d]/g, ''));
+  return Number.isFinite(n) ? n : 0;
+}
+function formatCLP(n: number) {
+  try {
+    return n.toLocaleString('es-CL', { style: 'currency', currency: 'CLP', maximumFractionDigits: 0 });
+  } catch {
+    return `$${Math.round(n)}`;
+  }
 }
