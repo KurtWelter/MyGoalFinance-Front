@@ -75,8 +75,10 @@ export default function Home() {
 
       if (p.status === 'fulfilled') setProfile(p.value);
       if (s.status === 'fulfilled') {
-        const { inc, exp, net, month } = s.value as any;
-        setSum({ inc, exp, net, month });
+        const { inc = 0, exp = 0, month } = s.value as any;
+        // ✅ Neto “real” para la UI: ingresos - |gastos|
+        const netUi = Number(inc) - Math.abs(Number(exp));
+        setSum({ inc: Number(inc), exp: Number(exp), net: netUi, month });
       }
       if (r.status === 'fulfilled') setRates(r.value as Rates);
       if (nf.status === 'fulfilled') setNews((nf.value as Article[]).slice(0, 3));

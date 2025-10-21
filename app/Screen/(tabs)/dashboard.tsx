@@ -1,317 +1,279 @@
 // app/Screen/(tabs)/dashboard.tsx
-import React, { useEffect, useMemo, useState } from 'react';
+import styles from '@/Styles/dashboardStyles';
+import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
+import { StatusBar } from 'expo-status-bar';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Dimensions,
+  Pressable,
+  RefreshControl,
   ScrollView,
   Text,
-  TouchableOpacity,
   View,
 } from 'react-native';
-import {
-  VictoryAxis,
-  VictoryBar,
-  VictoryChart,
-  VictoryGroup,
-  VictoryLine,
-  VictoryPie,
-} from 'victory-native';
+import { BarChart, LineChart, PieChart } from 'react-native-chart-kit';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import api from '../../../constants/api';
-import styles, { palette, vxAxis, vxLabel } from '../../../Styles/dashboardStyles';
 
-type Tx = {
-  id: number;
-  amount: number | string;
-  type: 'income' | 'expense';
-  category_id?: number | null;
-  description?: string | null;
-  occurred_at: string; // YYYY-MM-DD
-};
+type Tx = { id: number | string; amount: number; date?: string; type?: 'income' | 'expense' };
+type SummaryMonth = { inc: number; exp: number; net: number; month: string };
 
-type SummaryMonth = {
-  month: string; // 'YYYY-MM'
-  from: string;
-  to: string;
-  inc: number;
-  exp: number;
-  net: number;
-  byCategory: { category_id: number | null; total: number }[];
-};
+const GREEN = '#22c55e';
+const RED = '#ef4444';
+const BLUE = '#4dabf7';
+const LEGEND = '#e2e8f0';
 
-/* ------------------ helpers ------------------ */
-const pad2 = (n: number) => String(n).padStart(2, '0');
-const dateToYM = (d = new Date()) => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}`;
-const nextYM = (ym: string, delta: number) => {
-  const [y, m] = ym.split('-').map(Number);
-  const d = new Date(y, m - 1 + delta, 1);
-  return dateToYM(d);
-};
-const ymToTitle = (ym: string) => {
-  const [y, m] = ym.split('-').map(Number);
-  const d = new Date(y, m - 1, 1);
-  return d.toLocaleString('es-CL', { month: 'long', year: 'numeric' });
-};
-const daysInMonth = (ym: string) => {
-  const [y, m] = ym.split('-').map(Number);
-  return new Date(y, m, 0).getDate();
-};
-const fmtCLP = (n: number = 0) =>
-  n.toLocaleString('es-CL', {
-    style: 'currency',
-    currency: 'CLP',
-    maximumFractionDigits: 0,
-  });
-const fmtShort = (n: number = 0) => {
-  const v = Math.abs(n);
-  if (v >= 1_000_000) return `${(n / 1_000_000).toFixed(1).replace(/\.0$/, '')}M`;
-  if (v >= 1_000) return `${Math.round(n / 1_000)}k`;
-  return `${Math.round(n)}`;
-};
-// % helper
-const pct = (part: number, total: number) =>
-  total > 0 ? Math.round((part / total) * 100) : 0;
+const chartWidth = Dimensions.get('window').width - 28;
 
-/* ------------------ tamaños de gráficos ------------------ */
-const winW = Math.min(Dimensions.get('window').width, 480);
-const chartW = winW - 32; // paddingHorizontal 16 + 16
-const lineH = 200;
-const barH = 220;
-const pieH = 260;
-const pieRadius = Math.min(chartW, pieH) / 2 - 20;
-
-/* ------------------ componente ------------------ */
 export default function Dashboard() {
-  const [month, setMonth] = useState<string>(() => dateToYM());
+  const [month, setMonth] = useState<string>(() => ymdMonth(new Date()));
   const [busy, setBusy] = useState(true);
-  const [summary, setSummary] = useState<SummaryMonth | null>(null);
+
+  const [kpi, setKpi] = useState<SummaryMonth | null>(null);
   const [txs, setTxs] = useState<Tx[]>([]);
 
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        setBusy(true);
-        const [sum, list] = await Promise.all([
-          api.summaryMonth({ month }),
-          api.listTransactions({ month }),
-        ]);
-        if (!cancelled) {
-          setSummary(sum as SummaryMonth);
-          setTxs(list as Tx[]);
-        }
-      } catch (e) {
-        console.error('dashboard fetch error', e);
-      } finally {
-        if (!cancelled) setBusy(false);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
+  const monthLabel = useMemo(() => formatMonth(month), [month]);
+
+  const load = useCallback(async () => {
+    try {
+      setBusy(true);
+      const [s, t] = await Promise.all([api.summaryMonth({ month }), api.listTransactions({ month })]);
+
+      // ⬇️ Normalizamos: net = ingresos - |gastos|
+      const inc = Number((s as any)?.inc ?? 0);
+      const expRaw = Number((s as any)?.exp ?? 0); // algunos backends lo devuelven negativo
+      const net = inc - Math.abs(expRaw);
+      setKpi({ inc, exp: expRaw, net, month });
+
+      const items = (t || []).map((x: any) => ({
+        id: x.id,
+        date: x.date || x.created_at?.slice(0, 10),
+        type: (x.type as 'income' | 'expense') ?? (Number(x.amount) >= 0 ? 'income' : 'expense'),
+        amount: Number(x.amount),
+      }));
+      setTxs(items);
+    } finally {
+      setBusy(false);
+    }
   }, [month]);
 
-  /* ------- series diarias (línea) ------- */
-  const { seriesIncome, seriesExpense } = useMemo(() => {
-    const totalDays = daysInMonth(month);
-    const incArr = Array.from({ length: totalDays }, (_, i) => ({ x: i + 1, y: 0 }));
-    const expArr = Array.from({ length: totalDays }, (_, i) => ({ x: i + 1, y: 0 }));
+  useEffect(() => {
+    load();
+  }, [load]);
 
-    txs.forEach((t) => {
-      if (!t.occurred_at?.startsWith(month)) return;
-      const day = Number(t.occurred_at.slice(8, 10));
-      const amt = Number(t.amount ?? 0);
-      if (day >= 1 && day <= totalDays) {
-        if (t.type === 'income') incArr[day - 1].y += amt;
-        else expArr[day - 1].y += amt;
-      }
-    });
-    return { seriesIncome: incArr, seriesExpense: expArr };
-  }, [txs, month]);
+  const series = useMemo(() => buildSeries(month, txs), [month, txs]);
 
-  /* ------- barras semanales ------- */
-  const weekBars = useMemo(() => {
-    const weeks = [
-      { x: 'S1', inc: 0, exp: 0 },
-      { x: 'S2', inc: 0, exp: 0 },
-      { x: 'S3', inc: 0, exp: 0 },
-      { x: 'S4', inc: 0, exp: 0 },
-      { x: 'S5', inc: 0, exp: 0 },
-    ];
-    txs.forEach((t) => {
-      if (!t.occurred_at?.startsWith(month)) return;
-      const day = Number(t.occurred_at.slice(8, 10));
-      const idx = Math.min(Math.ceil(day / 7), 5) - 1;
-      const amt = Number(t.amount ?? 0);
-      if (t.type === 'income') weeks[idx].inc += amt;
-      else weeks[idx].exp += amt;
-    });
-    return weeks;
-  }, [txs, month]);
+  const nextMonth = () => setMonth(addMonths(month, +1));
+  const prevMonth = () => setMonth(addMonths(month, -1));
 
-  /* ------- pie por categoría (con fallback) ------- */
-  const pieDataByCategory = useMemo(() => {
-    const rows = summary?.byCategory ?? [];
-    if (rows.length > 0) {
-      return rows
-        .map((r) => ({
-          x: r.category_id == null ? 'Sin categoría' : `Cat ${r.category_id}`,
-          y: Number(r.total ?? 0),
-        }))
-        .filter((d) => d.y > 0);
-    }
-    const map = new Map<string, number>();
-    for (const t of txs) {
-      if (t.type !== 'expense') continue;
-      if (!t.occurred_at?.startsWith(month)) continue;
-      const key = t.category_id ? `Cat ${t.category_id}` : 'Sin categoría';
-      map.set(key, (map.get(key) ?? 0) + Number(t.amount ?? 0));
-    }
-    return Array.from(map.entries())
-      .map(([x, total]) => ({ x, y: total }))
-      .filter((d) => d.y > 0);
-  }, [summary, txs, month]);
-
-  /* ------- pie Ingresado/Gastado/Ahorrado ------- */
-  const pieIncomeSpendSave = useMemo(() => {
-    const inc = Number(summary?.inc ?? 0);
-    const exp = Number(summary?.exp ?? 0);
-    const save = Math.max(inc - exp, 0);
-    const vals = [
-      { label: 'Ingresado', y: inc },
-      { label: 'Gastado', y: exp },
-      { label: 'Ahorrado', y: save },
-    ];
-    const total = vals.reduce((s, v) => s + v.y, 0);
-    if (total <= 0) return [] as { x: string; y: number }[];
-    return vals.map((v) => ({ x: v.label, y: v.y }));
-  }, [summary]);
-
-  const inc = Number(summary?.inc ?? 0);
-  const exp = Number(summary?.exp ?? 0);
-  const net = Number(summary?.net ?? 0);
-
-  /* ------------------ UI ------------------ */
   return (
-    <ScrollView style={styles.container} contentContainerStyle={{ paddingBottom: 24 }}>
-      {/* Header con mes */}
-      <View style={styles.header}>
-        <TouchableOpacity style={styles.navBtn} onPress={() => setMonth((m) => nextYM(m, -1))}>
-          <Text style={styles.navBtnTxt}>{'<'}</Text>
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>{ymToTitle(month)}</Text>
-        <TouchableOpacity style={styles.navBtn} onPress={() => setMonth((m) => nextYM(m, +1))}>
-          <Text style={styles.navBtnTxt}>{'>'}</Text>
-        </TouchableOpacity>
-      </View>
+    <SafeAreaView style={styles.safe} edges={['top', 'left', 'right']}>
+      <StatusBar style="light" />
 
-      {/* KPIs */}
-      <View style={styles.kpisRow}>
-        <View style={styles.kpiCard}>
-          <Text style={styles.kpiLabel}>Ingresos</Text>
-          <Text style={[styles.kpiValue, { color: palette.income }]}>{fmtCLP(inc)}</Text>
+      {/* Header */}
+      <LinearGradient colors={['#2e3b55', '#1f2738']} style={styles.header}>
+        <View style={styles.headerRow}>
+          <Pressable style={styles.navBtn} onPress={prevMonth} hitSlop={8}>
+            <Ionicons name="chevron-back" size={18} color="#e2e8f0" />
+          </Pressable>
+          <Text style={styles.h1}>{monthLabel}</Text>
+          <Pressable style={styles.navBtn} onPress={nextMonth} hitSlop={8}>
+            <Ionicons name="chevron-forward" size={18} color="#e2e8f0" />
+          </Pressable>
         </View>
-        <View style={styles.kpiCard}>
-          <Text style={styles.kpiLabel}>Gastos</Text>
-          <Text style={[styles.kpiValue, { color: palette.expense }]}>{fmtCLP(exp)}</Text>
-        </View>
-        <View style={styles.kpiCard}>
-          <Text style={styles.kpiLabel}>Neto</Text>
-          <Text style={[styles.kpiValue, { color: palette.net }]}>{fmtCLP(net)}</Text>
-        </View>
-      </View>
 
-      {busy && (
-        <View style={styles.busy}>
-          <ActivityIndicator />
+        <View style={styles.kpisRow}>
+          <KPI label="Ingresos" value={kpi?.inc ?? 0} color={GREEN} />
+          {/* Gastos como valor absoluto para evitar doble signo */}
+          <KPI label="Gastos" value={Math.abs(kpi?.exp ?? 0)} color={RED} />
+          <KPI label="Neto" value={kpi?.net ?? 0} color={BLUE} />
         </View>
-      )}
+      </LinearGradient>
 
-      {/* Línea: Ingresos vs Gastos (diario) */}
-      {!busy && (
-        <View style={styles.card}>
-          <Text style={styles.cardTitle}>Ingresos vs Gastos (diario)</Text>
-          <VictoryChart
-            width={chartW}
-            height={lineH}
-            padding={{ left: 68, right: 16, top: 8, bottom: 30 }}
-          >
-            <VictoryAxis style={vxAxis} tickFormat={(t) => `${t}`} />
-            <VictoryAxis dependentAxis style={vxAxis} tickFormat={(t) => fmtShort(Number(t))} />
-            <VictoryLine
-              interpolation="monotoneX"
-              data={seriesIncome}
-              style={{ data: { stroke: palette.income, strokeWidth: 2 } }}
-            />
-            <VictoryLine
-              interpolation="monotoneX"
-              data={seriesExpense}
-              style={{ data: { stroke: palette.expense, strokeWidth: 2 } }}
-            />
-          </VictoryChart>
-        </View>
-      )}
-
-      {/* Barras: totales por semana */}
-      {!busy && (
-        <View style={styles.card}>
-          <Text style={styles.cardTitle}>Totales por semana</Text>
-          <VictoryChart
-            width={chartW}
-            height={barH}
-            padding={{ left: 68, right: 16, top: 8, bottom: 30 }}
-            domainPadding={{ x: 22 }}
-          >
-            <VictoryAxis style={vxAxis} />
-            <VictoryAxis dependentAxis style={vxAxis} tickFormat={(t) => fmtShort(Number(t))} />
-            <VictoryGroup offset={14}>
-              <VictoryBar
-                data={weekBars.map((w) => ({ x: w.x, y: w.inc }))}
-                style={{ data: { fill: palette.income } }}
-                barWidth={12}
-              />
-              <VictoryBar
-                data={weekBars.map((w) => ({ x: w.x, y: w.exp }))}
-                style={{ data: { fill: palette.expense } }}
-                barWidth={12}
-              />
-            </VictoryGroup>
-          </VictoryChart>
-        </View>
-      )}
-
-      {/* Pie: Distribución Ingresado / Gastado / Ahorrado (con %) */}
-      {!busy && (
-        <View style={styles.card}>
-          <Text style={styles.cardTitle}>Distribución: Ingresado vs Gastado vs Ahorrado</Text>
-          {pieIncomeSpendSave.length === 0 ? (
-            <Text style={styles.emptyText}>Aún no hay movimientos para este mes.</Text>
+      {/* Content */}
+      <ScrollView
+        style={styles.scroll}
+        contentContainerStyle={styles.content}
+        refreshControl={<RefreshControl refreshing={busy} onRefresh={load} />}
+      >
+        {/* Diario: ingresos vs gastos */}
+        <Card title="Ingresos vs Gastos (diario)">
+          {busy ? (
+            <Loader />
           ) : (
-            (() => {
-              const totalDist = pieIncomeSpendSave.reduce(
-                (s, d) => s + Number(d.y || 0),
-                0
-              );
-              return (
-                <VictoryPie
-                  width={chartW}
-                  height={pieH}
-                  data={pieIncomeSpendSave}
-                  x="x"
-                  y="y"
-                  innerRadius={Math.round(pieRadius * 0.5)}
-                  padAngle={1}
-                  labelRadius={Math.round(pieRadius * 0.92)}
-                  style={{ labels: vxLabel }}
-                  colorScale={[palette.pieIncome, palette.pieExpense, palette.pieSaving]}
-                  labels={({ datum }) =>
-                    `${datum.x}\n${pct(Number(datum.y || 0), totalDist)}%`
-                  }
-                />
-              );
-            })()
+            <LineChart
+              width={chartWidth}
+              height={220}
+              fromZero
+              data={{
+                labels: series.daily.labels,
+                datasets: [
+                  { data: series.daily.income, color: () => GREEN, strokeWidth: 2 },
+                  { data: series.daily.expense, color: () => RED, strokeWidth: 2 },
+                ],
+                legend: ['Ingresos', 'Gastos'],
+              }}
+              yAxisLabel=""
+              yAxisSuffix=""
+              chartConfig={chartCfg}
+              bezier
+              style={styles.chart}
+            />
           )}
-        </View>
-      )}
-    </ScrollView>
+        </Card>
+
+        {/* Semanal: neto por semana */}
+        <Card title="Totales por semana">
+          {busy ? (
+            <Loader />
+          ) : (
+            <BarChart
+              width={chartWidth}
+              height={220}
+              fromZero
+              data={{
+                labels: ['S1', 'S2', 'S3', 'S4', 'S5'],
+                datasets: [{ data: series.weekly.net }],
+              }}
+              yAxisLabel=""
+              yAxisSuffix=""
+              chartConfig={chartCfg}
+              style={styles.chart}
+              showBarTops={false}
+            />
+          )}
+        </Card>
+
+        {/* Distribución */}
+        <Card title="Distribución: Ingresado vs Gastado vs Ahorrado">
+          {busy ? (
+            <Loader />
+          ) : (
+            <PieChart
+              width={chartWidth}
+              height={240}
+              accessor="value"
+              backgroundColor="transparent"
+              hasLegend
+              chartConfig={chartCfg}
+              data={[
+                { name: 'Ingresado', value: Math.max(0, series.distribution.income),  color: BLUE,  legendFontColor: LEGEND, legendFontSize: 14 },
+                { name: 'Gastado',   value: Math.max(0, series.distribution.expense), color: RED,   legendFontColor: LEGEND, legendFontSize: 14 },
+                { name: 'Ahorrado',  value: Math.max(0, series.distribution.saved),   color: GREEN, legendFontColor: LEGEND, legendFontSize: 14 },
+              ]}
+              paddingLeft="8"
+              yAxisLabel=""
+              yAxisSuffix=""
+              style={styles.chart}
+            />
+          )}
+        </Card>
+
+        <View style={{ height: 20 }} />
+      </ScrollView>
+    </SafeAreaView>
   );
 }
+
+/* ----------------------- UI helpers ----------------------- */
+
+function KPI({ label, value, color }: { label: string; value: number; color: string }) {
+  return (
+    <View style={styles.kpi}>
+      <Text style={styles.kpiLabel}>{label}</Text>
+      <Text style={[styles.kpiValue, { color }]}>{formatCLP(value)}</Text>
+    </View>
+  );
+}
+
+function Card({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <View style={styles.card}>
+      <Text style={styles.cardTitle}>{title}</Text>
+      <View style={{ marginTop: 8 }}>{children}</View>
+    </View>
+  );
+}
+
+function Loader() {
+  return (
+    <View style={styles.loader}>
+      <ActivityIndicator />
+    </View>
+  );
+}
+
+/* ------------------------ data helpers ------------------------ */
+
+function buildSeries(ym: string, txs: Tx[]) {
+  const [y, m] = ym.split('-').map(Number);
+  const days = new Date(y, m, 0).getDate();
+
+  const income = Array(days).fill(0);
+  const expense = Array(days).fill(0);
+  const weeklyNet = [0, 0, 0, 0, 0];
+
+  let inc = 0;
+  let exp = 0;
+
+  for (const t of txs) {
+    const d = (t.date || '').split('-')[2];
+    const day = Math.max(1, Math.min(days, Number(d || 1)));
+    const idx = day - 1;
+    const amount = Number(t.amount);
+
+    if ((t.type ?? (amount >= 0 ? 'income' : 'expense')) === 'income') {
+      income[idx] += Math.abs(amount);
+      inc += Math.abs(amount);
+      weeklyNet[Math.ceil(day / 7) - 1] += Math.abs(amount);
+    } else {
+      expense[idx] += Math.abs(amount);
+      exp += Math.abs(amount);
+      weeklyNet[Math.ceil(day / 7) - 1] -= Math.abs(amount);
+    }
+  }
+
+  const labels = Array.from({ length: days }, (_, i) => ((i + 1) % 5 === 0 ? String(i + 1) : ''));
+
+  return {
+    daily: { labels, income, expense },
+    weekly: { net: weeklyNet },
+    distribution: { income: inc, expense: exp, saved: Math.max(0, inc - exp) },
+  };
+}
+
+function formatCLP(n: number) {
+  try {
+    return n.toLocaleString('es-CL', { style: 'currency', currency: 'CLP', maximumFractionDigits: 0 });
+  } catch {
+    return `$${Math.round(n)}`;
+  }
+}
+function ymdMonth(d: Date) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+}
+function addMonths(ym: string, delta: number) {
+  const [y, m] = ym.split('-').map(Number);
+  const d = new Date(y, m - 1 + delta, 1);
+  return ymdMonth(d);
+}
+function formatMonth(ym: string) {
+  const [y, m] = ym.split('-').map(Number);
+  const d = new Date(y, m - 1, 1);
+  return d.toLocaleDateString('es-CL', { month: 'long', year: 'numeric' });
+}
+
+/* ------------------------ chart config ------------------------ */
+
+const chartCfg = {
+  backgroundGradientFrom: '#0b1324',
+  backgroundGradientTo: '#0b1324',
+  decimalPlaces: 0,
+  color: (o = 1) => `rgba(226, 232, 240, ${o})`,
+  labelColor: (o = 1) => `rgba(148, 163, 184, ${o})`,
+  propsForLabels: { fontSize: 10 },
+  propsForDots: { r: '2' },
+  propsForBackgroundLines: { stroke: '#1f2937' },
+};

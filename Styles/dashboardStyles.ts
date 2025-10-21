@@ -1,137 +1,65 @@
 // Styles/dashboardStyles.ts
 import { StyleSheet } from 'react-native';
 
-/** Paleta centralizada y colores de series */
-export const palette = {
-  // base
-  bg: '#2f3b52',
-  card: 'rgba(255,255,255,0.08)',
-  cardAlt: 'rgba(255,255,255,0.12)',
-  border: 'rgba(255,255,255,0.14)',
-  textPrimary: '#F8FAFC',
-  textMuted: '#CBD5E1',
+const BG = '#0f172a';
+const PANEL = '#0b1324';
+const BORDER = '#1f2937';
+const FG = '#e2e8f0';
+const MUTED = '#94a3b8';
+const ACCENT = '#ffb300';
 
-  // acentos
-  brand: '#f59e0b',
+export default StyleSheet.create({
+  safe: { flex: 1, backgroundColor: BG },
 
-  // métricas
-  income: '#16a34a',
-  expense: '#ef4444',
-  net: '#60a5fa',
-
-  // pies
-  pieIncome: '#0ea5a5',
-  pieExpense: '#ef4444',
-  pieSaving: '#22c55e',
-  pieNeutral: '#94a3b8',
-
-  // ejes/grids para charts
-  axis: 'rgba(255,255,255,0.18)',
-  grid: 'rgba(255,255,255,0.06)',
-};
-
-/** Estilos “reutilizables” de Victory (pásalos en style={...}) */
-export const vxAxis = {
-  axis: { stroke: palette.axis },
-  tickLabels: { fill: palette.textMuted, fontSize: 10 },
-  grid: { stroke: palette.grid },
-};
-export const vxLabel = { fill: '#111827', fontSize: 11, fontWeight: '600' };
-
-const styles = StyleSheet.create({
-  /* ---------- Layout general ---------- */
-  container: {
-    flex: 1,
-    paddingHorizontal: 16,
-    paddingTop: 12,
-    backgroundColor: palette.bg,
-  },
-
-  /* ---------- Header ---------- */
-  header: {
+  header: { padding: 16, paddingBottom: 20 },
+  headerRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     marginBottom: 12,
   },
-  headerTitle: { color: palette.textPrimary, fontSize: 18, fontWeight: '800', letterSpacing: 0.3 },
   navBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: 'rgba(255,255,255,0.14)',
-    borderWidth: 1,
-    borderColor: palette.border,
+    width: 32,
+    height: 32,
+    borderRadius: 8,
     alignItems: 'center',
     justifyContent: 'center',
+    backgroundColor: '#ffffff1a',
   },
-  navBtnTxt: { color: palette.textPrimary, fontSize: 16, fontWeight: '700' },
+  h1: { color: FG, fontSize: 18, fontWeight: '800' },
 
-  /* ---------- KPIs ---------- */
-  kpisRow: { flexDirection: 'row', gap: 10, marginBottom: 10 },
-  kpiCard: {
+  kpisRow: { flexDirection: 'row', gap: 10 },
+  kpi: {
     flex: 1,
-    backgroundColor: palette.card,
-    borderWidth: 1,
-    borderColor: palette.border,
-    borderRadius: 14,
-    paddingVertical: 12,
-    alignItems: 'center',
-
-    // sombra ligera
-    shadowColor: '#000',
-    shadowOpacity: 0.18,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 3,
+    backgroundColor: PANEL,
+    borderRadius: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
   },
-  kpiLabel: { color: palette.textMuted, fontSize: 12, fontWeight: '600' },
-  kpiValue: { color: palette.textPrimary, fontWeight: '900', marginTop: 2, letterSpacing: 0.3 },
+  kpiLabel: { color: MUTED, fontSize: 12, marginBottom: 4 },
+  kpiValue: { color: FG, fontSize: 16, fontWeight: '800' },
 
-  /* ---------- Loading ---------- */
-  busy: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  scroll: { flex: 1 },
+  content: { padding: 14, gap: 12 },
 
-  /* ---------- Tarjetas / Secciones ---------- */
   card: {
-    backgroundColor: palette.card,
-    borderWidth: 1,
-    borderColor: palette.border,
+    backgroundColor: PANEL,
     borderRadius: 14,
     padding: 12,
-    marginTop: 10,
-
-    shadowColor: '#000',
-    shadowOpacity: 0.18,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 5 },
-    elevation: 4,
-  },
-  cardTitle: {
-    color: palette.textPrimary,
-    fontSize: 15,
-    fontWeight: '800',
-    marginBottom: 8,
-    letterSpacing: 0.2,
-  },
-  emptyText: {
-    color: palette.textMuted,
-    textAlign: 'center',
-    marginVertical: 14,
-    fontSize: 13,
-  },
-
-  /* ---------- Leyendas/auxiliares (por si las usas) ---------- */
-  legendRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, marginTop: 6 },
-  legendItem: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  legendDot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    backgroundColor: palette.pieNeutral,
     borderWidth: 1,
-    borderColor: 'rgba(0,0,0,0.15)',
+    borderColor: BORDER,
+    shadowColor: '#000',
+    shadowOpacity: 0.15,
+    shadowRadius: 6,
+    elevation: 2,
   },
-  legendTxt: { color: palette.textMuted, fontSize: 12, fontWeight: '600' },
-});
+  cardTitle: { color: FG, fontSize: 15, fontWeight: '700' },
 
-export default styles;
+  chart: { marginTop: 4, borderRadius: 12 },
+
+  loader: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 16,
+  },
+});

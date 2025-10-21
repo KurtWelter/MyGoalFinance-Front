@@ -263,13 +263,30 @@ export const api = {
 
   // GOALS
   listGoals: () => req<any[]>('/goals', { auth: true }),
-  createGoal: (p: any) =>
-    req<{ id: string }>('/goals', { method: 'POST', body: p, auth: true }),
-  updateGoal: (id: string, p: any) =>
-    req<any>(`/goals/${id}`, { method: 'PATCH', body: p, auth: true }),
-  deleteGoal: (id: string) =>
-    req<void>(`/goals/${id}`, { method: 'DELETE', auth: true }),
 
+createGoal: (p: any) =>
+  req<{ id: string }>('/goals', {
+    method: 'POST',
+    auth: true,
+    body: {
+      ...p,
+      // Normaliza campos opcionales para que Zod no reciba `null` ni ''
+      description:
+        p?.description == null || String(p.description).trim() === ''
+          ? undefined
+          : String(p.description).trim(),
+      deadline:
+        p?.deadline == null || String(p.deadline).trim() === ''
+          ? undefined
+          : String(p.deadline).trim(), // "YYYY-MM-DD" si lo usas
+    },
+  }),
+
+updateGoal: (id: string, p: any) =>
+  req<any>(`/goals/${id}`, { method: 'PATCH', body: p, auth: true }),
+
+deleteGoal: (id: string) =>
+  req<void>(`/goals/${id}`, { method: 'DELETE', auth: true }),
   // TRANSACTIONS
   listTransactions: (q?: { from?: string; to?: string; month?: string }) => {
     let from = q?.from;
@@ -321,8 +338,10 @@ export const api = {
   // CONTRIBUTIONS
   listContributions: (goalId: string) =>
     req<any[]>(`/goals/contributions/${goalId}`, { auth: true }),
+
+  // 👇 Ruta corregida: /goals/:id/contribute
   addContribution: (goalId: string, p: any) =>
-    req<{ id: string }>(`/goals/contributions/${goalId}`, {
+    req<{ id: string }>(`/goals/${goalId}/contribute`, {
       method: 'POST',
       body: p,
       auth: true,
