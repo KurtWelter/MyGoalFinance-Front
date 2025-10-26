@@ -2,7 +2,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Constants from 'expo-constants';
 import { Platform } from 'react-native';
-import { API_PREFIX, API_URL } from './config';
+import { API_PREFIX, API_URL, SUPABASE_ANON_KEY } from './config';
 
 type Method = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
 
@@ -20,40 +20,39 @@ type ReqOpts = {
 
 /**
  * Resolver de base URL multiplataforma.
- * - Prioriza API_URL que exportas desde ./config
- * - Si no está, usa expo.extra.apiUrl o EXPO_PUBLIC_API_URL
- * - En web usa el hostname actual (útil para http://localhost:3000)
- * - En nativo hace fallback a una IP LAN por defecto (ajústala si quieres)
+ * - Si viene `configUrl`/env con una URL completa (http/https) → úsala tal cual.
+ * - Si no hay nada, en web arma http://<host>:3000 para dev.
+ * - En nativo hace fallback a una IP LAN por defecto.
  */
 function resolveApiUrl(configUrl?: string) {
-  const extra = (Constants as any)?.expoConfig?.extra?.apiUrl;
-  const env = process.env.EXPO_PUBLIC_API_URL;
+  const extra = (Constants as any)?.expoConfig?.extra || {};
+  const env = process.env.EXPO_PUBLIC_API_URL || extra.EXPO_PUBLIC_API_URL;
+
+  // ✅ si nos dieron una URL completa (https://...), úsala tal cual
+  const explicit = configUrl || env;
+  if (explicit && /^https?:\/\//.test(explicit)) return explicit;
 
   if (Platform.OS === 'web') {
     const host =
       (typeof window !== 'undefined' && window.location?.hostname) || 'localhost';
-    // intenta respetar el puerto del config/env si existe; si no, 3000
-    const portFromConfig = (() => {
-      try {
-        const u = new URL(configUrl || extra || env || '');
-        return u.port || '';
-      } catch {
-        return '';
-      }
-    })();
-    const port = portFromConfig || '3000';
+    // trata de respetar puerto si hubiera uno en extra.apiUrl
+    let port = '3000';
+    try {
+      const u = new URL(extra.apiUrl || '');
+      if (u.port) port = u.port;
+    } catch {}
     return `http://${host}:${port}`;
   }
 
-  if (configUrl && !/^undefined$/.test(configUrl) && configUrl.trim() !== '') {
-    return configUrl;
-  }
-
-  return extra || env || 'http://192.168.1.83:3000';
+  // nativo: si no hay URL explícita, cae al viejo apiUrl local o a un fallback
+  if (extra.apiUrl) return extra.apiUrl;
+  return 'http://192.168.1.83:3000';
 }
 
-// Base URL efectiva (sin romper tus exports actuales)
-const BASE_URL = resolveApiUrl(API_URL);
+// Base URL efectiva (normalizada)
+const BASE_URL = (resolveApiUrl(API_URL) || '').replace(/\/$/, '');
+// Prefix normalizado (sin slash final)
+const PREFIX = (API_PREFIX || '/api').replace(/\/$/, '');
 
 async function req<T>(
   path: string,
@@ -70,14 +69,25 @@ async function req<T>(
   const isForm = (typeof FormData !== 'undefined') && (body instanceof FormData);
 
   const headers: Record<string, string> = {};
+
+  // ✅ ¡Siempre enviar la anon key! (requisito del gateway de Edge Functions)
+  if (SUPABASE_ANON_KEY) {
+    headers['apikey'] = SUPABASE_ANON_KEY;
+    // (opcional) algunos setups aceptan también:
+    // headers['x-client-info'] = 'mygoalfinance';
+  }
+
   if (!isForm) headers['Content-Type'] = 'application/json';
+
+  // ✅ Authorization solo cuando el endpoint requiere sesión del usuario
   if (auth) {
     const token = await AsyncStorage.getItem('token');
     if (token) headers.Authorization = `Bearer ${token}`;
   }
 
-  // ⬇️ Usar BASE_URL en vez de API_URL
-  const url = `${BASE_URL}${API_PREFIX}${path}`;
+  // Construcción robusta de URL
+  const cleanPath = path.startsWith('/') ? path : `/${path}`;
+  const url = `${BASE_URL}${PREFIX}${cleanPath}`;
 
   // Intento con reintentos controlados (solo red/timeout/5xx)
   let attempt = 0;
@@ -154,11 +164,10 @@ function sleep(ms: number) {
 
 /** Convierte "YYYY-MM" a [primer_día, último_día] */
 function monthToRange(ym: string) {
-  // ym = "YYYY-MM"
   const [y, m] = ym.split('-').map(Number);
   if (!y || !m) return { from: ym, to: ym }; // fallback defensivo
   const from = `${y}-${String(m).padStart(2, '0')}-01`;
-  const last = new Date(y, m, 0).getDate(); // último día del mes
+  const last = new Date(y, m, 0).getDate();
   const to = `${y}-${String(m).padStart(2, '0')}-${String(last).padStart(2, '0')}`;
   return { from, to };
 }
@@ -264,46 +273,43 @@ export const api = {
   // GOALS
   listGoals: () => req<any[]>('/goals', { auth: true }),
 
-createGoal: (p: any) =>
-  req<{ id: string }>('/goals', {
-    method: 'POST',
-    auth: true,
-    body: {
-      ...p,
-      // Normaliza campos opcionales para que Zod no reciba `null` ni ''
-      description:
-        p?.description == null || String(p.description).trim() === ''
-          ? undefined
-          : String(p.description).trim(),
-      deadline:
-        p?.deadline == null || String(p.deadline).trim() === ''
-          ? undefined
-          : String(p.deadline).trim(), // "YYYY-MM-DD" si lo usas
-    },
-  }),
+  createGoal: (p: any) =>
+    req<{ id: string }>('/goals', {
+      method: 'POST',
+      auth: true,
+      body: {
+        ...p,
+        description:
+          p?.description == null || String(p.description).trim() === ''
+            ? undefined
+            : String(p.description).trim(),
+        deadline:
+          p?.deadline == null || String(p.deadline).trim() === ''
+            ? undefined
+            : String(p.deadline).trim(),
+      },
+    }),
 
-updateGoal: (id: string, p: any) =>
-  req<any>(`/goals/${id}`, { method: 'PATCH', body: p, auth: true }),
+  updateGoal: (id: string, p: any) =>
+    req<any>(`/goals/${id}`, { method: 'PATCH', body: p, auth: true }),
 
-deleteGoal: (id: string) =>
-  req<void>(`/goals/${id}`, { method: 'DELETE', auth: true }),
+  deleteGoal: (id: string) =>
+    req<void>(`/goals/${id}`, { method: 'DELETE', auth: true }),
+
   // TRANSACTIONS
   listTransactions: (q?: { from?: string; to?: string; month?: string }) => {
     let from = q?.from;
     let to = q?.to;
 
-    // Si te pasan "month", conviértelo a rango
     if (!from && !to && q?.month) {
       const r = monthToRange(q.month);
       from = r.from;
       to = r.to;
     }
-
-    // Si por error llega "YYYY-MM" en from/to, normalízalo también
     if (from && from.length === 7) {
       const r = monthToRange(from);
       from = r.from;
-      if (!to) to = r.to; // fin del mismo mes
+      if (!to) to = r.to;
     }
     if (to && to.length === 7) {
       const r = monthToRange(to);
@@ -321,14 +327,12 @@ deleteGoal: (id: string) =>
   createTransaction: (p: any) =>
     req<{ id: string }>('/transactions', { method: 'POST', body: p, auth: true }),
 
-  /** NUEVOS HELPERS DE TRANSACCIONES */
   updateTransaction: (id: number | string, p: any) =>
     req<any>(`/transactions/${id}`, { method: 'PATCH', body: p, auth: true }),
 
   deleteTransaction: (id: number | string) =>
     req<void>(`/transactions/${id}`, { method: 'DELETE', auth: true }),
 
-  /** RESUMEN MENSUAL (KPIs + categorías) */
   summaryMonth: (p?: { month?: string }) =>
     req<SummaryMonth>(
       `/transactions/summary/month${p?.month ? `?month=${encodeURIComponent(p.month)}` : ''}`,
@@ -339,7 +343,6 @@ deleteGoal: (id: string) =>
   listContributions: (goalId: string) =>
     req<any[]>(`/goals/contributions/${goalId}`, { auth: true }),
 
-  // 👇 Ruta corregida: /goals/:id/contribute
   addContribution: (goalId: string, p: any) =>
     req<{ id: string }>(`/goals/${goalId}/contribute`, {
       method: 'POST',
@@ -350,14 +353,9 @@ deleteGoal: (id: string) =>
   // RECOMMENDATIONS
   listRecommendations: () => req<any[]>('/recommendations', { auth: true }),
 
-  // ──────────────────────────────
-  // CHAT (Groq-ready, consistente)
-  // ──────────────────────────────
-
-  /** Historial del chat del usuario (GET /api/chat) */
+  // CHAT
   chatHistory: () => req<ChatMsg[]>('/chat', { auth: true }),
 
-  /** Envía un mensaje y devuelve { user, bot } (POST /api/chat/message) */
   chatSend: (message: string) =>
     req<ChatSendResponse>('/chat/message', {
       method: 'POST',
@@ -365,7 +363,6 @@ deleteGoal: (id: string) =>
       auth: true,
     }),
 
-  /** Compatibilidad con código antiguo que esperaba { reply } */
   chatMessage: async (message: string) => {
     const res = await req<ChatSendResponse>('/chat', {
       method: 'POST',
@@ -375,16 +372,12 @@ deleteGoal: (id: string) =>
     return { reply: res.bot.message };
   },
 
-  // ─────────────── PUSH TOKENS ───────────────
-  /** Registra el token de notificaciones push en tu backend */
+  // PUSH TOKENS
   pushRegister: (p: { token: string; platform: 'ios' | 'android' | 'web' }) =>
     req<{ ok: boolean }>('/push/register', { method: 'POST', body: p, auth: true }),
 
-  // ─────────────── NEWS ───────────────
-  /** Tasas: USD, EUR y UF expresados en CLP */
+  // NEWS
   newsRates: () => req<Rates>('/news/rates', { auth: true }),
-
-  /** Feed de noticias financieras */
   newsFeed: () => req<Article[]>('/news/feed', { auth: true }),
 };
 

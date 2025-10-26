@@ -51,7 +51,9 @@
     },
 
     "extra": {
-      "apiUrl": "http://192.168.1.83:3000",
+      "EXPO_PUBLIC_API_URL": "https://kxfxdcsrlcpwqmvxaauc.supabase.co/functions/v1",
+      "EXPO_PUBLIC_API_PREFIX": "/api",
+      "EXPO_PUBLIC_SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt4ZnhkY3NybGNwd3FtdnhhYXVjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTc3MjM4OTIsImV4cCI6MjA3MzI5OTg5Mn0.N7wIkBLdMctuvtWEKaK1g8SBZKy4BcoH53e5A7v_twY",
       "eas": {
         "projectId": "TU-PROJECT-ID-REAL"
       }
