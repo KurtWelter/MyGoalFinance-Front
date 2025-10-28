@@ -1,0 +1,19 @@
+{
+  "cli": { "version": ">= 13.0.0" },
+  "build": {
+    "preview": {
+      "android": { "buildType": "apk" },
+      "env": {
+        "EXPO_PUBLIC_API_URL": "https://kxfxdcsrlcpwqmvxaauc.supabase.co/functions/v1",
+        "EXPO_PUBLIC_API_PREFIX": "/api"
+      }
+    },
+    "production": {
+      "android": { "buildType": "app-bundle" },
+      "env": {
+        "EXPO_PUBLIC_API_URL": "https://kxfxdcsrlcpwqmvxaauc.supabase.co/functions/v1",
+        "EXPO_PUBLIC_API_PREFIX": "/api"
+      }
+    }
+  }
+}
