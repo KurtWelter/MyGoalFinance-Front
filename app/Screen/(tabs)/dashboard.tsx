@@ -41,7 +41,7 @@ export default function Dashboard() {
       setBusy(true);
       const [s, t] = await Promise.all([api.summaryMonth({ month }), api.listTransactions({ month })]);
 
-      // ⬇️ Normalizamos: net = ingresos - |gastos|
+      // Normalizamos: net = ingresos - |gastos|
       const inc = Number((s as any)?.inc ?? 0);
       const expRaw = Number((s as any)?.exp ?? 0); // algunos backends lo devuelven negativo
       const net = inc - Math.abs(expRaw);
@@ -74,6 +74,10 @@ export default function Dashboard() {
 
       {/* Header */}
       <LinearGradient colors={['#2e3b55', '#1f2738']} style={styles.header}>
+        {/* Título grande */}
+        <Text style={styles.title}>Dashboard</Text>
+
+        {/* Selector de mes */}
         <View style={styles.headerRow}>
           <Pressable style={styles.navBtn} onPress={prevMonth} hitSlop={8}>
             <Ionicons name="chevron-back" size={18} color="#e2e8f0" />
@@ -84,6 +88,7 @@ export default function Dashboard() {
           </Pressable>
         </View>
 
+        {/* KPIs */}
         <View style={styles.kpisRow}>
           <KPI label="Ingresos" value={kpi?.inc ?? 0} color={GREEN} />
           {/* Gastos como valor absoluto para evitar doble signo */}
@@ -262,7 +267,11 @@ function addMonths(ym: string, delta: number) {
 function formatMonth(ym: string) {
   const [y, m] = ym.split('-').map(Number);
   const d = new Date(y, m - 1, 1);
-  return d.toLocaleDateString('es-CL', { month: 'long', year: 'numeric' });
+
+  // Capitalizamos manualmente la primera letra del mes en es-CL
+  const monthName = new Intl.DateTimeFormat('es-CL', { month: 'long' }).format(d);
+  const cap = monthName.charAt(0).toUpperCase() + monthName.slice(1);
+  return `${cap} de ${d.getFullYear()}`;
 }
 
 /* ------------------------ chart config ------------------------ */

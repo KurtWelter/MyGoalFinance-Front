@@ -17,7 +17,7 @@ type User = {
   name?: string;
   age_range?: string;
   experience?: 'beginner' | 'intermediate' | 'advanced';
-  monthly_income?: number | string;   // ✅ nombre correcto (con h)
+  monthly_income?: number | string;   // nombre correcto (con h)
   finance_goal?: string;
   // Permitimos el alias antiguo para no romper si aparece
   montly_income?: number | string;    // (alias legacy)
@@ -44,6 +44,9 @@ type AuthContextType = {
   pendingCreds: PendingCreds;
   setPendingCreds: (c: PendingCreds) => void;
   clearPendingCreds: () => void;
+
+  /** Adopta un access_token recibido por deep-link */
+  adoptToken: (tok: string) => Promise<void>;
 };
 
 const AuthContext = createContext<AuthContextType>({} as any);
@@ -117,6 +120,8 @@ export function AuthProvider({ children }: PropsWithChildren) {
     password: string
   ): Promise<{ id: string; email: string; requires_confirmation?: boolean }> => {
     const res = await api.register({ name, email, password });
+    // Útil para fallback si el deep-link no trae access_token:
+    setPendingCreds({ email, password });
     return res;
   }, []);
 
@@ -131,6 +136,22 @@ export function AuthProvider({ children }: PropsWithChildren) {
     }
   }, []);
 
+  // ⬇️ NUEVO: adoptar token de deep-link y completar sesión
+  const adoptToken = useCallback(async (tok: string) => {
+    setToken(tok);
+    await AsyncStorage.setItem('token', tok);
+    try {
+      const me = await api.getProfile();
+      const normalized = normalizeUser(me);
+      setUser(normalized);
+      if (normalized) {
+        await AsyncStorage.setItem('user', JSON.stringify(normalized));
+      }
+    } catch {
+      // silencioso
+    }
+  }, []);
+
   const value = useMemo<AuthContextType>(() => ({
     user,
     token,
@@ -142,7 +163,8 @@ export function AuthProvider({ children }: PropsWithChildren) {
     pendingCreds,
     setPendingCreds,
     clearPendingCreds: () => setPendingCreds(null),
-  }), [user, token, loading, login, register, logout, refreshMe, pendingCreds]);
+    adoptToken, // ⬅️ nuevo
+  }), [user, token, loading, login, register, logout, refreshMe, pendingCreds, adoptToken]);
 
   return (
     <AuthContext.Provider value={value}>

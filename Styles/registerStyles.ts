@@ -11,18 +11,35 @@ const styles = StyleSheet.create({
 
   // card flexible, sin altura fija, con márgenes en lugar de width fijo
   box: {
-    alignSelf: "stretch",
-    marginHorizontal: 16,
-    marginTop: 24,
-    marginBottom: 24, // deja espacio para scrollear cuando el teclado está abierto
-    padding: 24,
-    borderRadius: 15,
+    width: "90%",
+    padding: 30,
+    borderRadius: 20,
     backgroundColor: "#fff",
     shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 5,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
+    elevation: 8,
+    alignSelf: 'center', // Asegura que esté centrado
+    marginVertical: 20, // Espacio vertical para mejor centrado
+  },
+
+  // Header con botón de regreso
+  header: {
+    flexDirection: 'row',
+    justifyContent: 'flex-start',
+    alignItems: 'center',
+    marginBottom: 10,
+    paddingBottom: 10,
+  },
+
+  // Botón de regreso
+  backButton: {
+    padding: 8,
+    borderRadius: 20,
+    backgroundColor: "#f5a623",
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 
   title: {

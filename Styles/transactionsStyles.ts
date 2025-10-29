@@ -112,5 +112,14 @@ export default StyleSheet.create({
     gap: 6,
     flexDirection: 'row',
   },
-  btnPrimaryTxt: { color: '#1f2738', fontWeight: '800' },
+
+  title: {
+  color: '#ffffff',
+  fontSize: 28,         // grande como en la captura
+  fontWeight: '800',
+  textAlign: 'center',
+  marginBottom: 8,      // pequeño espacio antes del mes
+},
+btnPrimaryTxt: { color: '#1f2738', fontWeight: '800' },
+
 });

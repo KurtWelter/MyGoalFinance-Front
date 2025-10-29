@@ -30,6 +30,7 @@ export default StyleSheet.create({
     flexDirection: 'row' as const,
     gap: 8,
     marginTop: 10,
+    alignItems: 'center',
   },
   chip: {
     backgroundColor: '#1a2236',
@@ -40,5 +41,39 @@ export default StyleSheet.create({
     borderRadius: radius.sm,
   },
   chipText: { color: '#dbeafe', fontWeight: '700' as const },
-});
 
+  // --- Acciones (editar / eliminar) ---
+  actions: {
+    flexDirection: 'row' as const,
+    gap: 8,
+    alignItems: 'center' as const,
+  },
+  actionBtn: {
+    padding: 10,
+    borderRadius: radius.sm,
+    borderWidth: 1,
+  },
+  // Verde discreto (editar)
+  editBtn: {
+    backgroundColor: '#142a1d', // verde muy oscuro
+    borderColor: '#1f5130',
+  },
+  actionIconEdit: { color: '#34d399' }, // verde 400
+
+  // Rojo discreto (eliminar)
+  deleteBtn: {
+    backgroundColor: '#2a1416', // rojo muy oscuro
+    borderColor: '#6b2633',
+  },
+  actionIconDelete: { color: '#f87171' }, // rojo 400
+
+  // Botón + (aporte personalizado)
+  plusBtn: {
+    backgroundColor: '#ff9f1a',
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: radius.sm,
+    alignSelf: 'flex-end',
+  },
+  plusIcon: { color: '#3c2300' },
+});

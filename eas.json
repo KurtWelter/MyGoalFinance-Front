@@ -1,19 +1,35 @@
 {
-  "cli": { "version": ">= 13.0.0" },
+  "cli": {
+    "version": ">= 13.0.0",
+    "appVersionSource": "remote"
+  },
   "build": {
     "preview": {
-      "android": { "buildType": "apk" },
+      "node": "18.18.0",
+      "android": {
+        "buildType": "apk"
+      },
+      "ios": {
+        "simulator": true
+      },
       "env": {
         "EXPO_PUBLIC_API_URL": "https://kxfxdcsrlcpwqmvxaauc.supabase.co/functions/v1",
         "EXPO_PUBLIC_API_PREFIX": "/api"
-      }
+      },
+      "channel": "preview"
     },
     "production": {
-      "android": { "buildType": "app-bundle" },
+      "node": "18.18.0",
+      "android": {
+        "buildType": "app-bundle"
+      },
+      "ios": {
+      },
       "env": {
         "EXPO_PUBLIC_API_URL": "https://kxfxdcsrlcpwqmvxaauc.supabase.co/functions/v1",
         "EXPO_PUBLIC_API_PREFIX": "/api"
-      }
+      },
+      "channel": "production"
     }
   }
 }

@@ -53,6 +53,14 @@ export default StyleSheet.create({
     shadowRadius: 6,
     elevation: 2,
   },
+  title: {
+  color: '#ffffff',
+  fontSize: 32,
+  fontWeight: '800',
+  textAlign: 'center',
+  marginBottom: 8,
+},
+
   cardTitle: { color: FG, fontSize: 15, fontWeight: '700' },
 
   chart: { marginTop: 4, borderRadius: 12 },

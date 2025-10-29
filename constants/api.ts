@@ -12,7 +12,7 @@ type ReqOpts = {
   auth?: boolean;
   /** Tiempo máximo por request (ms). Default: 12000 */
   timeoutMs?: number;
-  /** Reintentos en errores de red/timeout o 5xx. Default: 1 (un reintento) */
+  /** Reintentos en errores de red/timeout o 5xx. Default: 1 */
   retries?: number;
   /** Delay base entre reintentos (ms). Default: 600 */
   retryDelayMs?: number;
@@ -21,32 +21,37 @@ type ReqOpts = {
 /**
  * Resolver de base URL multiplataforma.
  * - Si viene `configUrl`/env con una URL completa (http/https) → úsala tal cual.
- * - Si no hay nada, en web arma http://<host>:3000 para dev.
- * - En nativo hace fallback a una IP LAN por defecto.
+ * - En web (solo dev) arma http://<host>:<port> (por defecto 3000).
+ * - En nativo, si no hay URL explícita → error (para evitar fallbacks a IPs locales en APK).
  */
 function resolveApiUrl(configUrl?: string) {
-  const extra = (Constants as any)?.expoConfig?.extra || {};
+  const extra: any = (Constants as any)?.expoConfig?.extra || {};
   const env = process.env.EXPO_PUBLIC_API_URL || extra.EXPO_PUBLIC_API_URL;
 
-  // ✅ si nos dieron una URL completa (https://...), úsala tal cual
   const explicit = configUrl || env;
   if (explicit && /^https?:\/\//.test(explicit)) return explicit;
 
   if (Platform.OS === 'web') {
     const host =
       (typeof window !== 'undefined' && window.location?.hostname) || 'localhost';
-    // trata de respetar puerto si hubiera uno en extra.apiUrl
+
+    // intenta extraer puerto desde 'explicit' si es una URL parcial; si no, usa el del navegador o 3000
     let port = '3000';
     try {
-      const u = new URL(extra.apiUrl || '');
-      if (u.port) port = u.port;
+      if (explicit) {
+        const u = new URL(explicit);
+        if (u.port) port = u.port;
+      } else if (typeof window !== 'undefined' && window.location?.port) {
+        port = window.location.port || '3000';
+      }
     } catch {}
     return `http://${host}:${port}`;
   }
 
-  // nativo: si no hay URL explícita, cae al viejo apiUrl local o a un fallback
-  if (extra.apiUrl) return extra.apiUrl;
-  return 'http://192.168.1.83:3000';
+  // En apps nativas debemos tener EXPO_PUBLIC_API_URL configurada (eas/app.json).
+  throw new Error(
+    'Falta EXPO_PUBLIC_API_URL. Configúrala en app.json (extra) o en eas.json (env) para builds.'
+  );
 }
 
 // Base URL efectiva (normalizada)
@@ -70,11 +75,10 @@ async function req<T>(
 
   const headers: Record<string, string> = {};
 
-  // ✅ ¡Siempre enviar la anon key! (requisito del gateway de Edge Functions)
+  // ✅ Enviar la anon key (Edge Functions la esperan como apikey)
   if (SUPABASE_ANON_KEY) {
     headers['apikey'] = SUPABASE_ANON_KEY;
-    // (opcional) algunos setups aceptan también:
-    // headers['x-client-info'] = 'mygoalfinance';
+    // headers['x-client-info'] = 'mygoalfinance'; // opcional
   }
 
   if (!isForm) headers['Content-Type'] = 'application/json';
@@ -172,7 +176,7 @@ function monthToRange(ym: string) {
   return { from, to };
 }
 
-/** Tipo opcional para el summary mensual */
+/** Tipos… (resto de tu archivo se mantiene igual) */
 type SummaryMonth = {
   month: string;
   from: string;
@@ -183,13 +187,12 @@ type SummaryMonth = {
   byCategory: { category_id: number; total: number }[];
 };
 
-/** Tipos de chat */
 type ChatMsg = {
   id: number;
   user_id?: number;
   sender: 'user' | 'bot';
   message: string;
-  timestamp: string; // ISO
+  timestamp: string;
 };
 
 type ChatSendResponse = {
@@ -197,7 +200,6 @@ type ChatSendResponse = {
   bot: ChatMsg;
 };
 
-/** === NUEVOS TIPOS NEWS/RATES === */
 type Rates = {
   base: 'CLP';
   usd: number;
@@ -221,19 +223,12 @@ export const api = {
       '/auth/register',
       { method: 'POST', body: p }
     ),
-
   login: (p: { email: string; password: string }) =>
     req<{ access_token: string; user?: any }>(
       '/auth/login',
       { method: 'POST', body: p }
     ),
-
-  logout: () =>
-    req<{ ok: boolean }>(
-      '/auth/logout',
-      { method: 'POST', auth: true }
-    ),
-
+  logout: () => req<{ ok: boolean }>('/auth/logout', { method: 'POST', auth: true }),
   me: () => req<any>('/auth/me', { auth: true }),
 
   // PROFILE
@@ -241,10 +236,9 @@ export const api = {
   updateProfile: (p: any) =>
     req<any>('/profile', { method: 'PUT', body: p, auth: true }),
 
-  /** ⬇️ Subir avatar (web: Blob/File; nativo: { uri, name, type }) */
+  // Upload avatar
   uploadAvatar: async (uri: string) => {
     const fd = new FormData();
-
     if (Platform.OS === 'web') {
       const resp = await fetch(uri);
       const blob = await resp.blob();
@@ -261,7 +255,6 @@ export const api = {
         type: mime,
       } as any);
     }
-
     return req<{ url: string }>('/profile/avatar', {
       method: 'POST',
       body: fd,
@@ -272,7 +265,6 @@ export const api = {
 
   // GOALS
   listGoals: () => req<any[]>('/goals', { auth: true }),
-
   createGoal: (p: any) =>
     req<{ id: string }>('/goals', {
       method: 'POST',
@@ -289,10 +281,8 @@ export const api = {
             : String(p.deadline).trim(),
       },
     }),
-
   updateGoal: (id: string, p: any) =>
     req<any>(`/goals/${id}`, { method: 'PATCH', body: p, auth: true }),
-
   deleteGoal: (id: string) =>
     req<void>(`/goals/${id}`, { method: 'DELETE', auth: true }),
 
@@ -300,7 +290,6 @@ export const api = {
   listTransactions: (q?: { from?: string; to?: string; month?: string }) => {
     let from = q?.from;
     let to = q?.to;
-
     if (!from && !to && q?.month) {
       const r = monthToRange(q.month);
       from = r.from;
@@ -315,24 +304,18 @@ export const api = {
       const r = monthToRange(to);
       to = r.to;
     }
-
     const qs =
       from || to
         ? `?from=${encodeURIComponent(from ?? '')}&to=${encodeURIComponent(to ?? '')}`
         : '';
-
     return req<any[]>(`/transactions${qs}`, { auth: true });
   },
-
   createTransaction: (p: any) =>
     req<{ id: string }>('/transactions', { method: 'POST', body: p, auth: true }),
-
   updateTransaction: (id: number | string, p: any) =>
     req<any>(`/transactions/${id}`, { method: 'PATCH', body: p, auth: true }),
-
   deleteTransaction: (id: number | string) =>
     req<void>(`/transactions/${id}`, { method: 'DELETE', auth: true }),
-
   summaryMonth: (p?: { month?: string }) =>
     req<SummaryMonth>(
       `/transactions/summary/month${p?.month ? `?month=${encodeURIComponent(p.month)}` : ''}`,
@@ -342,7 +325,6 @@ export const api = {
   // CONTRIBUTIONS
   listContributions: (goalId: string) =>
     req<any[]>(`/goals/contributions/${goalId}`, { auth: true }),
-
   addContribution: (goalId: string, p: any) =>
     req<{ id: string }>(`/goals/${goalId}/contribute`, {
       method: 'POST',
@@ -355,14 +337,8 @@ export const api = {
 
   // CHAT
   chatHistory: () => req<ChatMsg[]>('/chat', { auth: true }),
-
   chatSend: (message: string) =>
-    req<ChatSendResponse>('/chat/message', {
-      method: 'POST',
-      body: { message },
-      auth: true,
-    }),
-
+    req<ChatSendResponse>('/chat/message', { method: 'POST', body: { message }, auth: true }),
   chatMessage: async (message: string) => {
     const res = await req<ChatSendResponse>('/chat', {
       method: 'POST',
@@ -376,7 +352,7 @@ export const api = {
   pushRegister: (p: { token: string; platform: 'ios' | 'android' | 'web' }) =>
     req<{ ok: boolean }>('/push/register', { method: 'POST', body: p, auth: true }),
 
-  // NEWS
+  // NEWS (pueden ser públicas, pero con auth también funciona)
   newsRates: () => req<Rates>('/news/rates', { auth: true }),
   newsFeed: () => req<Article[]>('/news/feed', { auth: true }),
 };

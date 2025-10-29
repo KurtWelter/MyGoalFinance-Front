@@ -60,11 +60,10 @@ export default function TransactionsScreen() {
         api.listTransactions({ month }),
       ]);
 
-      // ⬇️ Aseguramos neto correcto = ingresos - |gastos|
+      // Neto = ingresos - |gastos|
       const inc = Number((s as any)?.inc ?? 0);
       const expRaw = Number((s as any)?.exp ?? 0); // puede venir negativo
       const net = inc - Math.abs(expRaw);
-
       setKpi({ inc, exp: expRaw, net, month });
 
       const items = (t || []).map((x: any) => ({
@@ -138,11 +137,17 @@ export default function TransactionsScreen() {
 
       {/* Header */}
       <LinearGradient colors={['#2e3b55', '#1f2738']} style={styles.header}>
+        {/* Título grande */}
+        <Text style={styles.title}>Transacciones</Text>
+
+        {/* Selector de mes */}
         <View style={styles.headerRow}>
           <Pressable style={styles.navBtn} onPress={prevMonth} hitSlop={8}>
             <Ionicons name="chevron-back" size={18} color="#e2e8f0" />
           </Pressable>
-        <Text style={styles.h1}>{monthLabel}</Text>
+
+          <Text style={styles.h1}>{monthLabel}</Text>
+
           <Pressable style={styles.navBtn} onPress={nextMonth} hitSlop={8}>
             <Ionicons name="chevron-forward" size={18} color="#e2e8f0" />
           </Pressable>
@@ -151,7 +156,6 @@ export default function TransactionsScreen() {
         {/* KPIs */}
         <View style={styles.kpisRow}>
           <KPI label="Ingresos" value={kpi?.inc ?? 0} color={GREEN} />
-          {/* mostramos gastos como valor absoluto para evitar doble signo */}
           <KPI label="Gastos" value={Math.abs(kpi?.exp ?? 0)} color={RED} />
           <KPI label="Neto" value={kpi?.net ?? 0} color="#4dabf7" />
         </View>

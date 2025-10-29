@@ -3,6 +3,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import React, { useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   ActivityIndicator,
   Alert,
@@ -12,6 +13,7 @@ import {
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import LanguageSelector from '../../components/LanguageSelector';
 import SafeKeyboardScreen from '../../components/ui/SafeKeyboardScreen';
 import { useAuth } from '../../store/auth';
 import styles from '../../Styles/registerStyles';
@@ -19,6 +21,7 @@ import styles from '../../Styles/registerStyles';
 export default function Register() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const { t } = useTranslation();
 
   const { register: registerUser, login, setPendingCreds } = useAuth();
 
@@ -41,14 +44,14 @@ export default function Register() {
 
   const validate = () => {
     const e: Record<string, string> = {};
-    if (!name.trim()) e.name = 'Debe ingresar su nombre';
-    if (!email.trim()) e.email = 'Debe ingresar su correo';
-    else if (!emailRegex.test(email)) e.email = 'Correo inválido';
-    if (!password.trim()) e.password = 'Debe ingresar una contraseña';
+    if (!name.trim()) e.name = t('register.errorName');
+    if (!email.trim()) e.email = t('register.errorEmail');
+    else if (!emailRegex.test(email)) e.email = t('register.errorEmailInvalid');
+    if (!password.trim()) e.password = t('register.errorPassword');
     else if (!passwordRegex.test(password))
-      e.password = 'Mín 8, 1 mayúscula y 1 carácter especial';
-    if (!confirmPassword.trim()) e.confirmPassword = 'Debe confirmar la contraseña';
-    else if (password !== confirmPassword) e.confirmPassword = 'Las contraseñas no coinciden';
+      e.password = t('register.errorPasswordWeak');
+    if (!confirmPassword.trim()) e.confirmPassword = t('register.errorConfirmPassword');
+    else if (password !== confirmPassword) e.confirmPassword = t('register.errorPasswordMismatch');
     setErrors(e);
     return Object.keys(e).length === 0;
   };
@@ -68,7 +71,7 @@ export default function Register() {
       await login(email.trim(), password);
       router.replace('/Screen/questionnaire/step1');
     } catch (e: any) {
-      Alert.alert('Error', e?.message ?? 'No se pudo registrar');
+      Alert.alert(t('register.alertError'), e?.message ?? t('register.alertRegisterFailed'));
     } finally {
       setBusy(false);
     }
@@ -77,13 +80,16 @@ export default function Register() {
   return (
     // 👇 Safe wrapper que permite scroll y evita que el teclado tape los campos
     <SafeKeyboardScreen
-      scroll
+      scroll={false}
       bg="#0f172a"
       paddingH={0}
       paddingTop={0}
       extraBottomPad={16}
       withTabBarPadding={false}
     >
+      {/* Language Selector - positioned like in login */}
+      <LanguageSelector />
+      
       {/* Degradado como en Home: ocupa TODO el ancho */}
       <LinearGradient
         colors={['#1a2644', '#0f172a']}
@@ -95,7 +101,7 @@ export default function Register() {
           top: 0,
           left: 0,
           right: 0,
-          height: 280,
+          bottom: 0,
           opacity: 0.95,
         }}
       />
@@ -105,18 +111,31 @@ export default function Register() {
         style={{
           flex: 1,
           justifyContent: 'center',
-          paddingHorizontal: 16,
-          paddingBottom: Math.max(16, insets.bottom + 16),
+          alignItems: 'center',
+          paddingHorizontal: 20,
+          paddingVertical: 40,
         }}
       >
-        <View style={[styles.box, { width: '100%', maxWidth: 480, alignSelf: 'center' }]}>
-          <Text style={styles.title}>Crear cuenta</Text>
-          <Text style={styles.subtitle}>Únete a MyGoalFinance</Text>
+        <View style={[styles.box, { width: '100%', maxWidth: 380, alignSelf: 'center' }]}>
+          {/* Header con botón de regreso */}
+          <View style={styles.header}>
+            <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
+              <Ionicons name="arrow-back" size={24} color="#fff" />
+            </TouchableOpacity>
+          </View>
+
+          {/* Ícono */}
+          <View style={{ alignItems: 'center', marginBottom: 20 }}>
+            <Ionicons name="wallet" size={60} color="#f5a623" />
+          </View>
+          
+          <Text style={styles.title}>{t('register')}</Text>
+          <Text style={styles.subtitle}>{t('register')}</Text>
 
           {/* Nombre */}
           <TextInput
             style={[styles.input, errors.name && styles.inputError]}
-            placeholder="Nombre completo"
+            placeholder={t('name')}
             placeholderTextColor="#9aa3b2"
             value={name}
             onChangeText={setName}
@@ -130,7 +149,7 @@ export default function Register() {
           <TextInput
             ref={emailRef}
             style={[styles.input, errors.email && styles.inputError]}
-            placeholder="Correo electrónico"
+            placeholder={t('email')}
             placeholderTextColor="#9aa3b2"
             keyboardType="email-address"
             autoCapitalize="none"
@@ -143,12 +162,12 @@ export default function Register() {
           />
           {!!errors.email && <Text style={styles.errorText}>{errors.email}</Text>}
 
-          {/* Contraseña (con ojo) */}
+          {/* Contraseña con mostrar/ocultar */}
           <View style={{ position: 'relative' }}>
             <TextInput
               ref={passRef}
               style={[styles.input, errors.password && styles.inputError, { paddingRight: 44 }]}
-              placeholder="Contraseña (Ej: MiClave!2024)"
+              placeholder={t('password')}
               placeholderTextColor="#9aa3b2"
               secureTextEntry={!showPass}
               value={password}
@@ -167,12 +186,12 @@ export default function Register() {
           </View>
           {!!errors.password && <Text style={styles.errorText}>{errors.password}</Text>}
 
-          {/* Confirmar contraseña (con ojo) */}
+          {/* Confirmar contraseña con mostrar/ocultar */}
           <View style={{ position: 'relative' }}>
             <TextInput
               ref={confirmRef}
               style={[styles.input, errors.confirmPassword && styles.inputError, { paddingRight: 44 }]}
-              placeholder="Repite la contraseña"
+              placeholder={t('confirmPassword')}
               placeholderTextColor="#9aa3b2"
               secureTextEntry={!showPass2}
               value={confirmPassword}
@@ -198,7 +217,7 @@ export default function Register() {
             onPress={handleRegister}
             disabled={busy}
           >
-            {busy ? <ActivityIndicator color="#fff" /> : <Text style={styles.registerButtonText}>Registrarse</Text>}
+            {busy ? <ActivityIndicator color="#fff" /> : <Text style={styles.registerButtonText}>{t('Registrarce')}</Text>}
           </TouchableOpacity>
 
           {/* Volver al login */}
@@ -207,7 +226,7 @@ export default function Register() {
             onPress={() => router.replace('/Screen/login')}
             disabled={busy}
           >
-            <Text style={styles.loginButtonText}>¿Ya tienes cuenta? Inicia sesión</Text>
+            <Text style={styles.loginButtonText}>{t('Volver al Login')}</Text>
           </TouchableOpacity>
         </View>
       </View>
