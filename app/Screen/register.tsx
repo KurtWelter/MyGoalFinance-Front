@@ -7,12 +7,12 @@ import { useTranslation } from 'react-i18next';
 import {
   ActivityIndicator,
   Alert,
+  Keyboard,
   Text,
   TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import LanguageSelector from '../../components/LanguageSelector';
 import SafeKeyboardScreen from '../../components/ui/SafeKeyboardScreen';
 import { useAuth } from '../../store/auth';
@@ -20,7 +20,6 @@ import styles from '../../Styles/registerStyles';
 
 export default function Register() {
   const router = useRouter();
-  const insets = useSafeAreaInsets();
   const { t } = useTranslation();
 
   const { register: registerUser, login, setPendingCreds } = useAuth();
@@ -60,25 +59,37 @@ export default function Register() {
     if (!validate()) return;
     try {
       setBusy(true);
-      const res = await registerUser(name.trim(), email.trim(), password);
+      Keyboard.dismiss();
+
+      const emailNorm = email.trim().toLowerCase();
+      const res = await registerUser(name.trim(), emailNorm, password);
 
       if (res?.requires_confirmation) {
-        setPendingCreds({ email: email.trim(), password });
-        router.replace('../Screen/confirm-email');
+        // guardamos credenciales para auto-login después de confirmar
+        setPendingCreds({ email: emailNorm, password });
+        Alert.alert(
+          t('register.alertCheckEmailTitle', 'Verifica tu correo'),
+          t('register.alertCheckEmailBody', 'Te enviamos un email para confirmar tu cuenta. Luego inicia sesión para continuar.')
+        );
+        // 🔧 Ruta ABSOLUTA: evita problemas con paths relativos
+        router.replace('/Screen/confirm-email');
         return;
       }
 
-      await login(email.trim(), password);
+      // Si desactivaste la confirmación por correo, tendrás sesión directo:
+      await login(emailNorm, password);
       router.replace('/Screen/questionnaire/step1');
     } catch (e: any) {
-      Alert.alert(t('register.alertError'), e?.message ?? t('register.alertRegisterFailed'));
+      Alert.alert(
+        t('register.alertError', 'Error'),
+        e?.message ?? t('register.alertRegisterFailed', 'No se pudo registrar.')
+      );
     } finally {
       setBusy(false);
     }
   };
 
   return (
-    // 👇 Safe wrapper que permite scroll y evita que el teclado tape los campos
     <SafeKeyboardScreen
       scroll={false}
       bg="#0f172a"
@@ -87,10 +98,9 @@ export default function Register() {
       extraBottomPad={16}
       withTabBarPadding={false}
     >
-      {/* Language Selector - positioned like in login */}
       <LanguageSelector />
-      
-      {/* Degradado como en Home: ocupa TODO el ancho */}
+
+      {/* Fondo degradado */}
       <LinearGradient
         colors={['#1a2644', '#0f172a']}
         start={{ x: 0, y: 0 }}
@@ -106,7 +116,7 @@ export default function Register() {
         }}
       />
 
-      {/* Centrado del card + padding lateral */}
+      {/* Contenedor principal */}
       <View
         style={{
           flex: 1,
@@ -117,7 +127,7 @@ export default function Register() {
         }}
       >
         <View style={[styles.box, { width: '100%', maxWidth: 380, alignSelf: 'center' }]}>
-          {/* Header con botón de regreso */}
+          {/* Header con back */}
           <View style={styles.header}>
             <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
               <Ionicons name="arrow-back" size={24} color="#fff" />
@@ -128,15 +138,16 @@ export default function Register() {
           <View style={{ alignItems: 'center', marginBottom: 20 }}>
             <Ionicons name="wallet" size={60} color="#f5a623" />
           </View>
-          
-          <Text style={styles.title}>{t('register')}</Text>
-          <Text style={styles.subtitle}>{t('register')}</Text>
+
+          <Text style={styles.title}>{t('Registro')}</Text>
+          <Text style={styles.subtitle}>{t('Registro')}</Text>
 
           {/* Nombre */}
           <TextInput
             style={[styles.input, errors.name && styles.inputError]}
             placeholder={t('name')}
             placeholderTextColor="#9aa3b2"
+            autoCapitalize="words"
             value={name}
             onChangeText={setName}
             returnKeyType="next"
@@ -162,7 +173,7 @@ export default function Register() {
           />
           {!!errors.email && <Text style={styles.errorText}>{errors.email}</Text>}
 
-          {/* Contraseña con mostrar/ocultar */}
+          {/* Contraseña */}
           <View style={{ position: 'relative' }}>
             <TextInput
               ref={passRef}
@@ -186,7 +197,7 @@ export default function Register() {
           </View>
           {!!errors.password && <Text style={styles.errorText}>{errors.password}</Text>}
 
-          {/* Confirmar contraseña con mostrar/ocultar */}
+          {/* Confirmar contraseña */}
           <View style={{ position: 'relative' }}>
             <TextInput
               ref={confirmRef}
@@ -217,7 +228,14 @@ export default function Register() {
             onPress={handleRegister}
             disabled={busy}
           >
-            {busy ? <ActivityIndicator color="#fff" /> : <Text style={styles.registerButtonText}>{t('Registrarce')}</Text>}
+            {busy ? (
+              <ActivityIndicator color="#fff" />
+            ) : (
+              <Text style={styles.registerButtonText}>
+                {/* evita fallo de i18n si no hay key */}
+                {t('register.cta', { defaultValue: 'Registrarse' })}
+              </Text>
+            )}
           </TouchableOpacity>
 
           {/* Volver al login */}
@@ -226,7 +244,9 @@ export default function Register() {
             onPress={() => router.replace('/Screen/login')}
             disabled={busy}
           >
-            <Text style={styles.loginButtonText}>{t('Volver al Login')}</Text>
+            <Text style={styles.loginButtonText}>
+              {t('register.backToLogin', { defaultValue: 'Volver al Login' })}
+            </Text>
           </TouchableOpacity>
         </View>
       </View>

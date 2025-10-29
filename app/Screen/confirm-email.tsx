@@ -1,10 +1,12 @@
 // app/Screen/confirm-email.tsx
 import { LinearGradient } from "expo-linear-gradient";
+import * as Linking from "expo-linking";
 import { useRouter } from "expo-router";
-import React, { useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
+  AppState,
   Text,
   TouchableOpacity,
   View,
@@ -20,14 +22,30 @@ export default function ConfirmEmail() {
   const [busy, setBusy] = useState(false);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // Si no tenemos las credenciales temporales, manda al login.
+  // Si no hay credenciales temporales, mandamos al login
   useEffect(() => {
+    if (!pendingCreds) router.replace("/Screen/login");
+  }, [pendingCreds, router]);
+
+  const doLogin = useCallback(async () => {
     if (!pendingCreds) {
       router.replace("/Screen/login");
+      return;
     }
-  }, [pendingCreds]);
+    try {
+      setBusy(true);
+      await login(pendingCreds.email, pendingCreds.password);
+      clearPendingCreds();
+      router.replace("/Screen/questionnaire/step1");
+    } catch {
+      // Silencioso: aún no confirmado
+    } finally {
+      setBusy(false);
+    }
+  }, [pendingCreds, login, clearPendingCreds, router]);
 
-  const tryLogin = async () => {
+  // Botón "Ya confirmé"
+  const tryLogin = useCallback(async () => {
     if (!pendingCreds) {
       router.replace("/Screen/login");
       return;
@@ -45,26 +63,45 @@ export default function ConfirmEmail() {
     } finally {
       setBusy(false);
     }
-  };
+  }, [pendingCreds, login, clearPendingCreds, router]);
 
-  // Auto-reintento suave cada 8s (opcional pero cómodo)
+  // 1) Auto-intento cuando volvemos del deep link mygoalfinance://auth/callback
+  useEffect(() => {
+    const onUrl = ({ url }: { url: string }) => {
+      if (!url) return;
+      // Si quieres, valida el path: /auth/callback
+      // const { path } = Linking.parse(url);
+      // if (path === "auth/callback") ...
+      doLogin();
+    };
+    const sub = Linking.addEventListener("url", onUrl);
+
+    // Por si la app se abrió directamente desde el link
+    Linking.getInitialURL().then((url) => {
+      if (url) onUrl({ url });
+    });
+
+    return () => sub.remove();
+  }, [doLogin]);
+
+  // 2) Auto-intento suave cuando la app vuelve al primer plano
+  useEffect(() => {
+    const sub = AppState.addEventListener("change", (state) => {
+      if (state === "active") doLogin();
+    });
+    return () => sub.remove();
+  }, [doLogin]);
+
+  // 3) Reintento cada 8s mientras estamos en esta pantalla
   useEffect(() => {
     if (!pendingCreds) return;
     intervalRef.current = setInterval(() => {
-      login(pendingCreds.email, pendingCreds.password)
-        .then(() => {
-          clearPendingCreds();
-          router.replace("/Screen/questionnaire/step1");
-        })
-        .catch(() => {
-          // aún no confirmado → ignoramos
-        });
+      doLogin();
     }, 8000);
-
     return () => {
       if (intervalRef.current) clearInterval(intervalRef.current);
     };
-  }, [pendingCreds, login]);
+  }, [pendingCreds, doLogin]);
 
   return (
     <LinearGradient
@@ -99,7 +136,7 @@ export default function ConfirmEmail() {
           <Text style={{ fontWeight: "700" }}>
             {pendingCreds?.email ?? "tu correo"}
           </Text>
-          . Abre el enlace y vuelve aquí para continuar con el cuestionario.
+          . Abre el enlace (se abrirá la app) y, si no entra solo, toca “Ya confirmé”.
         </Text>
 
         <TouchableOpacity
@@ -131,20 +168,6 @@ export default function ConfirmEmail() {
         >
           <Text style={{ color: "#b9c6e4" }}>Volver al inicio de sesión</Text>
         </TouchableOpacity>
-
-        {/* 
-          (Opcional) Botón para reenviar el correo
-          Necesitarías exponer un endpoint /auth/resend o usar supabase desde el backend.
-          Lo dejamos comentado como recordatorio:
-        */}
-        {/* 
-        <TouchableOpacity
-          onPress={handleResend}
-          style={{ marginTop: 8, alignItems: "center" }}
-        >
-          <Text style={{ color: "#b9c6e4" }}>Reenviar correo de verificación</Text>
-        </TouchableOpacity>
-        */}
       </View>
     </LinearGradient>
   );
