@@ -1,4 +1,3 @@
-// app/Screen/login.tsx
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
@@ -30,20 +29,20 @@ export default function Login() {
 
   const onSubmit = async () => {
     const emailNorm = email.trim().toLowerCase();
-
     if (!emailNorm || !password) {
-      Alert.alert(t('login.alertAttention'), t('login.alertEnterCredentials'));
+      Alert.alert(
+        t('login.alertAttention', 'Atención'),
+        t('login.alertEnterCredentials', 'Ingresa tu correo y contraseña')
+      );
       return;
     }
     try {
       setBusy(true);
       Keyboard.dismiss();
-
       await login(emailNorm, password);
       router.replace('/Screen/(tabs)/home');
     } catch (e: any) {
       const msg: string = e?.message || '';
-      // Si la cuenta no está confirmada, llevamos al flujo de confirmación
       if (/confirm/i.test(msg) || /not.*confirm/i.test(msg)) {
         setPendingCreds({ email: emailNorm, password });
         Alert.alert(
@@ -53,7 +52,7 @@ export default function Login() {
         router.replace('/Screen/confirm-email');
         return;
       }
-      Alert.alert(t('login.alertError'), msg || t('login.alertLoginFailed'));
+      Alert.alert(t('login.alertError', 'Error'), msg || t('login.alertLoginFailed', 'No se pudo iniciar sesión'));
     } finally {
       setBusy(false);
     }
@@ -61,120 +60,38 @@ export default function Login() {
 
   return (
     <SafeKeyboardScreen scroll={false} bg="#0f172a" paddingH={0} paddingTop={0}>
-      {/* Language Selector */}
       <LanguageSelector />
 
-      {/* Degradado superior a ANCHO COMPLETO */}
       <LinearGradient
         colors={['#1a2644', '#0f172a']}
         start={{ x: 0, y: 0 }}
         end={{ x: 0, y: 1 }}
         pointerEvents="none"
-        style={{
-          position: 'absolute',
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          opacity: 0.95,
-        }}
+        style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, opacity: 0.95 }}
       />
 
-      {/* Contenedor que centra el modal */}
-      <View
-        style={{
-          flex: 1,
-          justifyContent: 'center',
-          alignItems: 'center',
-          paddingHorizontal: 20,
-          paddingVertical: 40,
-        }}
-      >
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 40 }}>
         <View style={[styles.box, { width: '100%', maxWidth: 380 }]}>
-          {/* Overlay con textura sutil */}
-          <View
-            style={{
-              position: 'absolute',
-              top: 0,
-              left: 0,
-              right: 0,
-              bottom: 0,
-              borderRadius: 20,
-              backgroundColor: 'rgba(248, 250, 252, 0.8)',
-              opacity: 0.6,
-            }}
-          />
-          {/* Patrón decorativo */}
-          <View
-            style={{
-              position: 'absolute',
-              top: 0,
-              left: 0,
-              right: 0,
-              bottom: 0,
-              borderRadius: 20,
-              backgroundColor: 'transparent',
-            }}
-          >
-            <View
-              style={{
-                position: 'absolute',
-                top: 15,
-                right: 15,
-                width: 4,
-                height: 4,
-                borderRadius: 2,
-                backgroundColor: 'rgba(245, 166, 35, 0.1)',
-              }}
-            />
-            <View
-              style={{
-                position: 'absolute',
-                top: 25,
-                left: 20,
-                width: 3,
-                height: 3,
-                borderRadius: 1.5,
-                backgroundColor: 'rgba(245, 166, 35, 0.08)',
-              }}
-            />
-            <View
-              style={{
-                position: 'absolute',
-                bottom: 30,
-                right: 25,
-                width: 5,
-                height: 5,
-                borderRadius: 2.5,
-                backgroundColor: 'rgba(245, 166, 35, 0.06)',
-              }}
-            />
-            <View
-              style={{
-                position: 'absolute',
-                bottom: 45,
-                left: 15,
-                width: 2,
-                height: 2,
-                borderRadius: 1,
-                backgroundColor: 'rgba(245, 166, 35, 0.1)',
-              }}
-            />
-          </View>
+          <View style={{
+            position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, borderRadius: 20,
+            backgroundColor: 'rgba(248, 250, 252, 0.8)', opacity: 0.6
+          }} />
 
-          {/* Contenido */}
           <View style={{ position: 'relative', zIndex: 10 }}>
-            {/* Icono */}
             <View style={{ alignItems: 'center', marginBottom: 20 }}>
               <Ionicons name="wallet" size={60} color="#f5a623" />
             </View>
 
-            <Text style={styles.title}>{t('login.title')}</Text>
-            <Text style={styles.subtitle}>{t('login.subtitle')}</Text>
+            <Text style={styles.title}>
+              {t('login.title2', 'Inicia sesión')}
+            </Text>
+            <Text style={styles.subtitle}>
+              {t('login.subtitle2', 'Ingresa tus credenciales para continuar')}
+            </Text>
 
             <TextInput
               style={styles.input}
-              placeholder={t('email')}
+              placeholder={t('common.email', 'Correo electrónico')}
               placeholderTextColor="#9aa3b2"
               keyboardType="email-address"
               autoCapitalize="none"
@@ -183,11 +100,10 @@ export default function Login() {
               returnKeyType="next"
             />
 
-            {/* Contraseña (con ojo) */}
             <View style={{ position: 'relative' }}>
               <TextInput
                 style={[styles.input, { paddingRight: 44 }]}
-                placeholder={t('password')}
+                placeholder={t('common.password', 'Contraseña')}
                 placeholderTextColor="#9aa3b2"
                 secureTextEntry={!showPassword}
                 value={password}
@@ -196,7 +112,7 @@ export default function Login() {
                 onSubmitEditing={onSubmit}
               />
               <TouchableOpacity
-                onPress={() => setShowPassword((v) => !v)}
+                onPress={() => setShowPassword(v => !v)}
                 style={{ position: 'absolute', right: 10, top: 12, padding: 6 }}
                 hitSlop={10}
               >
@@ -209,11 +125,9 @@ export default function Login() {
               onPress={onSubmit}
               disabled={busy}
             >
-              {busy ? (
-                <ActivityIndicator color="#fff" />
-              ) : (
-                <Text style={styles.loginButtonText}>{t('Login')}</Text>
-              )}
+              {busy
+                ? <ActivityIndicator color="#fff" />
+                : <Text style={styles.loginButtonText}>{t('login.signIn', 'Iniciar sesión')}</Text>}
             </TouchableOpacity>
 
             <TouchableOpacity
@@ -221,7 +135,9 @@ export default function Login() {
               onPress={() => router.push('/Screen/register')}
               disabled={busy}
             >
-              <Text style={styles.registerButtonText}>{t('Registrar')}</Text>
+              <Text style={styles.registerButtonText}>
+                {t('login.createAccount', 'Crear cuenta')}
+              </Text>
             </TouchableOpacity>
           </View>
         </View>

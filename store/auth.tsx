@@ -17,14 +17,13 @@ type User = {
   name?: string;
   age_range?: string;
   experience?: 'beginner' | 'intermediate' | 'advanced';
-  monthly_income?: number | string;   // nombre correcto (con h)
+  monthly_income?: number | string;
   finance_goal?: string;
-  // Permitimos el alias antiguo para no romper si aparece
-  montly_income?: number | string;    // (alias legacy)
+  montly_income?: number | string; // alias legacy
   [k: string]: any;
 };
 
-// Credenciales temporales (solo en memoria) para confirm-email
+// Credenciales temporales para confirm-email
 type PendingCreds = { email: string; password: string } | null;
 
 type AuthContextType = {
@@ -45,13 +44,30 @@ type AuthContextType = {
   setPendingCreds: (c: PendingCreds) => void;
   clearPendingCreds: () => void;
 
-  /** Adopta un access_token recibido por deep-link */
   adoptToken: (tok: string) => Promise<void>;
 };
 
 const AuthContext = createContext<AuthContextType>({} as any);
 
-// Normaliza shape del usuario (corrige monthly_income y alias antiguo)
+/* ---------------- helpers de token (compat) ---------------- */
+const AUTH_TOKEN_KEYS = ['auth_token', 'token'] as const;
+
+async function getStoredToken(): Promise<string | null> {
+  const entries = await AsyncStorage.multiGet([...AUTH_TOKEN_KEYS]);
+  const map = Object.fromEntries(entries);
+  return (map['auth_token'] as string) || (map['token'] as string) || null;
+}
+async function setStoredToken(tok: string) {
+  await AsyncStorage.multiSet([
+    ['auth_token', tok],
+    ['token', tok], // compat con código viejo
+  ]);
+}
+async function clearStoredToken() {
+  await AsyncStorage.multiRemove([...AUTH_TOKEN_KEYS]);
+}
+
+/* ---------------- normalización de usuario ---------------- */
 function normalizeUser(u: any | null): User | null {
   if (!u) return null;
   const out: User = { ...u };
@@ -66,15 +82,17 @@ export function AuthProvider({ children }: PropsWithChildren) {
   const [token, setToken] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
-  // Estado temporal (NO persistente) para confirmación de email
   const [pendingCreds, setPendingCreds] = useState<PendingCreds>(null);
 
-  // Bootstrap de sesión desde AsyncStorage
+  // Bootstrap desde AsyncStorage
   useEffect(() => {
     (async () => {
       try {
-        const [[, t], [, u]] = await AsyncStorage.multiGet(['token', 'user']);
-        setToken(t ?? null);
+        const [tok, u] = await Promise.all([
+          getStoredToken(),
+          AsyncStorage.getItem('user'),
+        ]);
+        setToken(tok);
         setUser(u ? normalizeUser(JSON.parse(u)) : null);
       } catch {
         setToken(null);
@@ -86,6 +104,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
   }, []);
 
   const refreshMe = useCallback(async () => {
+    // requiere token válido
     if (!token) return;
     try {
       const me = await api.getProfile();
@@ -95,17 +114,19 @@ export function AuthProvider({ children }: PropsWithChildren) {
         await AsyncStorage.setItem('user', JSON.stringify(normalized));
       }
     } catch {
-      // Silencioso
+      // silencioso
     }
   }, [token]);
 
   const login = useCallback(async (email: string, password: string) => {
-    const res = await api.login({ email, password });
+    const emailNorm = email.trim().toLowerCase();
+    const res = await api.login({ email: emailNorm, password });
     const tok = res.access_token;
-    setToken(tok);
-    await AsyncStorage.setItem('token', tok);
 
-    // Intentar perfil completo; si falla, usar res.user
+    setToken(tok);
+    await setStoredToken(tok);
+
+    // Perfil (si falla usamos res.user)
     const me = await api.getProfile().catch(() => res.user ?? null);
     const normalized = normalizeUser(me);
     setUser(normalized);
@@ -119,9 +140,10 @@ export function AuthProvider({ children }: PropsWithChildren) {
     email: string,
     password: string
   ): Promise<{ id: string; email: string; requires_confirmation?: boolean }> => {
-    const res = await api.register({ name, email, password });
-    // Útil para fallback si el deep-link no trae access_token:
-    setPendingCreds({ email, password });
+    const emailNorm = email.trim().toLowerCase();
+    const res = await api.register({ name, email: emailNorm, password });
+    // guardamos para auto-login tras confirmar
+    setPendingCreds({ email: emailNorm, password });
     return res;
   }, []);
 
@@ -132,14 +154,15 @@ export function AuthProvider({ children }: PropsWithChildren) {
       setUser(null);
       setToken(null);
       setPendingCreds(null);
-      await AsyncStorage.multiRemove(['token', 'user']);
+      await clearStoredToken();
+      await AsyncStorage.removeItem('user');
     }
   }, []);
 
-  // ⬇️ NUEVO: adoptar token de deep-link y completar sesión
+  // Adoptar token proveniente de deep-link
   const adoptToken = useCallback(async (tok: string) => {
     setToken(tok);
-    await AsyncStorage.setItem('token', tok);
+    await setStoredToken(tok);
     try {
       const me = await api.getProfile();
       const normalized = normalizeUser(me);
@@ -163,7 +186,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
     pendingCreds,
     setPendingCreds,
     clearPendingCreds: () => setPendingCreds(null),
-    adoptToken, // ⬅️ nuevo
+    adoptToken,
   }), [user, token, loading, login, register, logout, refreshMe, pendingCreds, adoptToken]);
 
   return (

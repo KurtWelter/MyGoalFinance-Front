@@ -1,177 +1,88 @@
-// components/LanguageSelector.tsx
 import { Ionicons } from '@expo/vector-icons';
-import React, { useState } from 'react';
-import { useTranslation } from 'react-i18next';
-import { Modal, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import React, { useMemo, useState } from 'react';
+import { Modal, Pressable, Text, View } from 'react-native';
+import i18n from '../i18n'; // ajusta la ruta si tu i18n está en otra carpeta
 
-interface LanguageSelectorProps {
-  style?: any;
-}
+type LangOption = { code: 'es' | 'en'; label: string };
 
-export default function LanguageSelector({ style }: LanguageSelectorProps) {
-  const { i18n, t } = useTranslation();
-  const [modalVisible, setModalVisible] = useState(false);
+const OPTIONS: LangOption[] = [
+  { code: 'es', label: 'ES' },
+  { code: 'en', label: 'EN' },
+];
 
-  const currentLanguage = i18n.language;
+export default function LanguageSelector() {
+  const [open, setOpen] = useState(false);
+  const current = (i18n.language?.slice(0, 2) as 'es' | 'en') || 'es';
+  const currentLabel = useMemo(
+    () => (current === 'es' ? 'ES' : 'EN'),
+    [current]
+  );
 
-  const changeLanguage = (lng: string) => {
-    i18n.changeLanguage(lng);
-    setModalVisible(false);
-  };
-
-  const getLanguageFlag = (lng: string) => {
-    switch (lng) {
-      case 'es':
-        return '🇪🇸';
-      case 'en':
-        return '🇺🇸';
-      default:
-        return '🌐';
-    }
-  };
-
-  const getLanguageCode = (lng: string) => {
-    switch (lng) {
-      case 'es':
-        return 'ES';
-      case 'en':
-        return 'EN';
-      default:
-        return 'ES';
+  const change = async (code: 'es' | 'en') => {
+    try {
+      // ⚠️ i18next quiere 'es'/'en' en minúscula
+      await i18n.changeLanguage(code);
+      await AsyncStorage.setItem('app.lang', code);
+    } catch (e) {
+      // no hacemos reload, ni navegamos: cero pantallazo negro
+      console.warn('changeLanguage error', e);
+    } finally {
+      setOpen(false);
     }
   };
 
   return (
-    <View style={[styles.container, style]}>
-      <TouchableOpacity
-        style={styles.selector}
-        onPress={() => setModalVisible(true)}
+    <View style={{ position: 'absolute', top: 32, right: 20, zIndex: 50 }}>
+      <Pressable
+        onPress={() => setOpen(true)}
+        style={{
+          flexDirection: 'row',
+          alignItems: 'center',
+          backgroundColor: 'rgba(255,255,255,0.15)',
+          borderRadius: 24,
+          paddingHorizontal: 14,
+          paddingVertical: 8,
+        }}
       >
-        <Text style={styles.flag}>{getLanguageFlag(currentLanguage)}</Text>
-        <Text style={styles.code}>{getLanguageCode(currentLanguage)}</Text>
-        <Ionicons name="chevron-down" size={16} color="#64748b" />
-      </TouchableOpacity>
+        <Ionicons name="globe" size={18} color="#fff" />
+        <Text style={{ color: '#fff', marginLeft: 6, fontWeight: '700' }}>
+          {currentLabel}
+        </Text>
+        <Ionicons name="chevron-down" size={16} color="#fff" style={{ marginLeft: 6 }} />
+      </Pressable>
 
-      <Modal
-        animationType="fade"
-        transparent={true}
-        visible={modalVisible}
-        onRequestClose={() => setModalVisible(false)}
-        statusBarTranslucent={true}
-      >
-        <TouchableOpacity
-          style={styles.modalOverlay}
-          activeOpacity={1}
-          onPress={() => setModalVisible(false)}
+      <Modal visible={open} transparent animationType="fade" onRequestClose={() => setOpen(false)}>
+        <Pressable
+          onPress={() => setOpen(false)}
+          style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.3)', justifyContent: 'center', alignItems: 'center' }}
         >
-          <View style={styles.modalContent}>
-            <TouchableOpacity
-              style={[
-                styles.languageOption,
-                currentLanguage === 'es' && styles.selectedOption,
-              ]}
-              onPress={() => changeLanguage('es')}
-            >
-              <Text style={styles.optionFlag}>🇪🇸</Text>
-              <Text style={styles.optionText}>{t('language.spanish')}</Text>
-              {currentLanguage === 'es' && (
-                <Ionicons name="checkmark" size={20} color="#f5a623" />
-              )}
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[
-                styles.languageOption,
-                currentLanguage === 'en' && styles.selectedOption,
-              ]}
-              onPress={() => changeLanguage('en')}
-            >
-              <Text style={styles.optionFlag}>🇺🇸</Text>
-              <Text style={styles.optionText}>{t('language.english')}</Text>
-              {currentLanguage === 'en' && (
-                <Ionicons name="checkmark" size={20} color="#f5a623" />
-              )}
-            </TouchableOpacity>
+          <View style={{ width: 220, backgroundColor: '#0f172a', borderRadius: 14, padding: 10, borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)' }}>
+            {OPTIONS.map((opt) => {
+              const active = opt.code === current;
+              return (
+                <Pressable
+                  key={opt.code}
+                  onPress={() => change(opt.code)}
+                  style={{
+                    paddingVertical: 12,
+                    paddingHorizontal: 12,
+                    borderRadius: 10,
+                    backgroundColor: active ? 'rgba(255,255,255,0.08)' : 'transparent',
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                  }}
+                >
+                  <Text style={{ color: '#fff', fontWeight: active ? '800' : '600', fontSize: 16 }}>
+                    {opt.label}
+                  </Text>
+                  {active && <Ionicons name="checkmark" size={18} color="#fff" style={{ marginLeft: 'auto' }} />}
+                </Pressable>
+              );
+            })}
           </View>
-        </TouchableOpacity>
+        </Pressable>
       </Modal>
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    position: 'absolute',
-    top: 50,
-    right: 20,
-    zIndex: 1001,
-  },
-  selector: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'rgba(255, 255, 255, 0.9)',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 20,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 3.84,
-    elevation: 5,
-  },
-  flag: {
-    fontSize: 16,
-    marginRight: 4,
-  },
-  code: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#374151',
-    marginRight: 4,
-  },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    zIndex: 9999,
-  },
-  modalContent: {
-    backgroundColor: 'white',
-    borderRadius: 12,
-    padding: 8,
-    minWidth: 160,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.25,
-    shadowRadius: 3.84,
-    elevation: 10,
-    zIndex: 10000,
-  },
-  languageOption: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderRadius: 8,
-  },
-  selectedOption: {
-    backgroundColor: 'rgba(245, 166, 35, 0.1)',
-  },
-  optionFlag: {
-    fontSize: 18,
-    marginRight: 8,
-  },
-  optionText: {
-    flex: 1,
-    fontSize: 16,
-    color: '#374151',
-    fontWeight: '500',
-  },
-});

@@ -47,8 +47,7 @@ export default function Register() {
     if (!email.trim()) e.email = t('register.errorEmail');
     else if (!emailRegex.test(email)) e.email = t('register.errorEmailInvalid');
     if (!password.trim()) e.password = t('register.errorPassword');
-    else if (!passwordRegex.test(password))
-      e.password = t('register.errorPasswordWeak');
+    else if (!passwordRegex.test(password)) e.password = t('register.errorPasswordWeak');
     if (!confirmPassword.trim()) e.confirmPassword = t('register.errorConfirmPassword');
     else if (password !== confirmPassword) e.confirmPassword = t('register.errorPasswordMismatch');
     setErrors(e);
@@ -68,21 +67,23 @@ export default function Register() {
         // guardamos credenciales para auto-login después de confirmar
         setPendingCreds({ email: emailNorm, password });
         Alert.alert(
-          t('register.alertCheckEmailTitle', 'Verifica tu correo'),
-          t('register.alertCheckEmailBody', 'Te enviamos un email para confirmar tu cuenta. Luego inicia sesión para continuar.')
+          t('register.title'),
+          t('register.checkEmail', {
+            defaultValue:
+              'We sent you an email to confirm your account. After confirming, sign in to continue.',
+          })
         );
-        // 🔧 Ruta ABSOLUTA: evita problemas con paths relativos
         router.replace('/Screen/confirm-email');
         return;
       }
 
-      // Si desactivaste la confirmación por correo, tendrás sesión directo:
+      // Si no usas confirmación por correo, tendrás sesión directa:
       await login(emailNorm, password);
       router.replace('/Screen/questionnaire/step1');
     } catch (e: any) {
       Alert.alert(
-        t('register.alertError', 'Error'),
-        e?.message ?? t('register.alertRegisterFailed', 'No se pudo registrar.')
+        t('register.alertError'),
+        e?.message ?? t('register.alertRegisterFailed')
       );
     } finally {
       setBusy(false);
@@ -139,13 +140,13 @@ export default function Register() {
             <Ionicons name="wallet" size={60} color="#f5a623" />
           </View>
 
-          <Text style={styles.title}>{t('Registro')}</Text>
-          <Text style={styles.subtitle}>{t('Registro')}</Text>
+          <Text style={styles.title}>{t('register.title')}</Text>
+          <Text style={styles.subtitle}>{t('register.subtitle')}</Text>
 
           {/* Nombre */}
           <TextInput
             style={[styles.input, errors.name && styles.inputError]}
-            placeholder={t('name')}
+            placeholder={t('register.namePlaceholder')}
             placeholderTextColor="#9aa3b2"
             autoCapitalize="words"
             value={name}
@@ -160,7 +161,7 @@ export default function Register() {
           <TextInput
             ref={emailRef}
             style={[styles.input, errors.email && styles.inputError]}
-            placeholder={t('email')}
+            placeholder={t('register.emailPlaceholder')}
             placeholderTextColor="#9aa3b2"
             keyboardType="email-address"
             autoCapitalize="none"
@@ -178,7 +179,7 @@ export default function Register() {
             <TextInput
               ref={passRef}
               style={[styles.input, errors.password && styles.inputError, { paddingRight: 44 }]}
-              placeholder={t('password')}
+              placeholder={t('register.passwordPlaceholder')}
               placeholderTextColor="#9aa3b2"
               secureTextEntry={!showPass}
               value={password}
@@ -202,7 +203,7 @@ export default function Register() {
             <TextInput
               ref={confirmRef}
               style={[styles.input, errors.confirmPassword && styles.inputError, { paddingRight: 44 }]}
-              placeholder={t('confirmPassword')}
+              placeholder={t('register.confirmPasswordPlaceholder')}
               placeholderTextColor="#9aa3b2"
               secureTextEntry={!showPass2}
               value={confirmPassword}
@@ -231,10 +232,7 @@ export default function Register() {
             {busy ? (
               <ActivityIndicator color="#fff" />
             ) : (
-              <Text style={styles.registerButtonText}>
-                {/* evita fallo de i18n si no hay key */}
-                {t('register.cta', { defaultValue: 'Registrarse' })}
-              </Text>
+              <Text style={styles.registerButtonText}>{t('register.registerButton')}</Text>
             )}
           </TouchableOpacity>
 
@@ -244,9 +242,7 @@ export default function Register() {
             onPress={() => router.replace('/Screen/login')}
             disabled={busy}
           >
-            <Text style={styles.loginButtonText}>
-              {t('register.backToLogin', { defaultValue: 'Volver al Login' })}
-            </Text>
+            <Text style={styles.loginButtonText}>{t('register.loginLink')}</Text>
           </TouchableOpacity>
         </View>
       </View>

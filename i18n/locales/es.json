@@ -4,7 +4,7 @@
     "subtitle": "Tu futuro financiero comienza aquí",
     "emailPlaceholder": "Correo electrónico",
     "passwordPlaceholder": "Contraseña",
-    "loginButton": "Iniciar Sesión",
+    "loginButton": "Iniciar sesión",
     "registerLink": "¿No tienes cuenta? Regístrate",
     "alertAttention": "Atención",
     "alertEnterCredentials": "Ingresa tu correo y contraseña",
@@ -12,28 +12,28 @@
     "alertLoginFailed": "No se pudo iniciar sesión"
   },
   "register": {
-    "title": "Crear Cuenta",
+    "title": "Crear cuenta",
     "subtitle": "Únete a MyGoalFinance",
     "namePlaceholder": "Nombre completo",
     "emailPlaceholder": "Correo electrónico",
     "passwordPlaceholder": "Contraseña",
     "confirmPasswordPlaceholder": "Confirmar contraseña",
-    "registerButton": "Crear Cuenta",
+    "registerButton": "Crear cuenta",
     "loginLink": "¿Ya tienes cuenta? Inicia sesión",
-    "errorName": "Debe ingresar su nombre",
-    "errorEmail": "Debe ingresar su correo",
+    "errorName": "Debes ingresar tu nombre",
+    "errorEmail": "Debes ingresar tu correo",
     "errorEmailInvalid": "Correo inválido",
-    "errorPassword": "Debe ingresar una contraseña",
+    "errorPassword": "Debes ingresar una contraseña",
     "errorPasswordWeak": "Mín 8, 1 mayúscula y 1 carácter especial",
-    "errorConfirmPassword": "Debe confirmar la contraseña",
+    "errorConfirmPassword": "Debes confirmar la contraseña",
     "errorPasswordMismatch": "Las contraseñas no coinciden",
     "alertError": "Error",
     "alertRegisterFailed": "No se pudo registrar"
   },
   "home": {
-    "totalIncome": "Total Ingresos",
-    "quickActions": "Acciones Rápidas",
-    "addMovement": "Añadir mov.",
+    "totalIncome": "Ingresos totales",
+    "quickActions": "Accesos rápidos",
+    "addMovement": "Agregar mov.",
     "chatbot": "Chatbot",
     "goals": "Metas",
     "goalsPreview": "Tus metas",
@@ -62,10 +62,10 @@
     "news": "Noticias",
     "recap": "Resumen",
     "recommendation": "Recomendado",
-    "dashboard": "Dashboard"
+    "dashboard": "Panel"
   },
   "language": {
     "spanish": "Español",
-    "english": "English"
+    "english": "Inglés"
   }
 }

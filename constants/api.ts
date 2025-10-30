@@ -34,8 +34,6 @@ function resolveApiUrl(configUrl?: string) {
   if (Platform.OS === 'web') {
     const host =
       (typeof window !== 'undefined' && window.location?.hostname) || 'localhost';
-
-    // intenta extraer puerto desde 'explicit' si es una URL parcial; si no, usa el del navegador o 3000
     let port = '3000';
     try {
       if (explicit) {
@@ -48,7 +46,6 @@ function resolveApiUrl(configUrl?: string) {
     return `http://${host}:${port}`;
   }
 
-  // En apps nativas debemos tener EXPO_PUBLIC_API_URL configurada (eas/app.json).
   throw new Error(
     'Falta EXPO_PUBLIC_API_URL. Configúrala en app.json (extra) o en eas.json (env) para builds.'
   );
@@ -70,12 +67,10 @@ async function req<T>(
     retryDelayMs = 600,
   }: ReqOpts = {}
 ): Promise<T> {
-  // ✅ Soporte para FormData (multipart) sin romper JSON
   const isForm = (typeof FormData !== 'undefined') && (body instanceof FormData);
-
   const headers: Record<string, string> = {};
 
-  // ✅ Enviar la anon key (Edge Functions la esperan como apikey)
+  // En Edge Functions, muchas veces se espera `apikey`
   if (SUPABASE_ANON_KEY) {
     headers['apikey'] = SUPABASE_ANON_KEY;
     // headers['x-client-info'] = 'mygoalfinance'; // opcional
@@ -83,17 +78,17 @@ async function req<T>(
 
   if (!isForm) headers['Content-Type'] = 'application/json';
 
-  // ✅ Authorization solo cuando el endpoint requiere sesión del usuario
+  // Authorization solo cuando el endpoint requiere sesión
   if (auth) {
-    const token = await AsyncStorage.getItem('token');
+    const token =
+      (await AsyncStorage.getItem('auth_token')) ||
+      (await AsyncStorage.getItem('token')); // fallback compat
     if (token) headers.Authorization = `Bearer ${token}`;
   }
 
-  // Construcción robusta de URL
   const cleanPath = path.startsWith('/') ? path : `/${path}`;
   const url = `${BASE_URL}${PREFIX}${cleanPath}`;
 
-  // Intento con reintentos controlados (solo red/timeout/5xx)
   let attempt = 0;
   // eslint-disable-next-line no-constant-condition
   while (true) {
@@ -101,7 +96,7 @@ async function req<T>(
     const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
     try {
-      console.log('➡️ [api]', method, url, auth ? '(auth)' : '', body ?? '');
+      console.log('➡️ [api]', method, url, auth ? '(auth)' : '', isForm ? '[FormData]' : (body ?? ''));
 
       const res = await fetch(url, {
         method,
@@ -115,16 +110,16 @@ async function req<T>(
       try {
         data = raw ? JSON.parse(raw) : null;
       } catch {
-        data = raw; // HTML / texto plano
+        data = raw; // texto/HTML
       }
 
       console.log('⬅️ [api]', res.status, path, data);
 
       if (!res.ok) {
-        // Si es 5xx y hay reintentos, reintenta
+        // Reintentar solo errores 5xx, si quedan intentos
         if (res.status >= 500 && retries - attempt > 0) {
           attempt++;
-          await sleep(retryDelayMs * attempt); // backoff lineal
+          await sleep(retryDelayMs * attempt);
           continue;
         }
         const msg =
@@ -140,7 +135,6 @@ async function req<T>(
         (err?.message?.includes('Network') ||
           err?.message === 'TypeError: Network request failed');
 
-      // Reintenta solo para timeout / error de red
       if ((isAbort || isNetwork) && retries - attempt > 0) {
         console.log(
           '[api] retrying due to',
@@ -154,8 +148,10 @@ async function req<T>(
       }
 
       console.error('[api] fetch error', err?.message || err);
+      // ✅ Preserva el mensaje real salvo timeout/red
       if (isAbort) throw new Error('Tiempo de espera agotado');
-      throw new Error('No se pudo conectar con el servidor');
+      if (isNetwork) throw new Error('No se pudo conectar con el servidor');
+      throw new Error(err?.message || 'Error desconocido');
     } finally {
       clearTimeout(timeoutId);
     }
@@ -169,7 +165,7 @@ function sleep(ms: number) {
 /** Convierte "YYYY-MM" a [primer_día, último_día] */
 function monthToRange(ym: string) {
   const [y, m] = ym.split('-').map(Number);
-  if (!y || !m) return { from: ym, to: ym }; // fallback defensivo
+  if (!y || !m) return { from: ym, to: ym };
   const from = `${y}-${String(m).padStart(2, '0')}-01`;
   const last = new Date(y, m, 0).getDate();
   const to = `${y}-${String(m).padStart(2, '0')}-${String(last).padStart(2, '0')}`;
@@ -223,11 +219,13 @@ export const api = {
       '/auth/register',
       { method: 'POST', body: p }
     ),
+
   login: (p: { email: string; password: string }) =>
     req<{ access_token: string; user?: any }>(
       '/auth/login',
       { method: 'POST', body: p }
     ),
+
   logout: () => req<{ ok: boolean }>('/auth/logout', { method: 'POST', auth: true }),
   me: () => req<any>('/auth/me', { auth: true }),
 
@@ -259,7 +257,7 @@ export const api = {
       method: 'POST',
       body: fd,
       auth: true,
-      timeoutMs: 20_000,
+      timeoutMs: 60_000,
     });
   },
 
@@ -352,7 +350,7 @@ export const api = {
   pushRegister: (p: { token: string; platform: 'ios' | 'android' | 'web' }) =>
     req<{ ok: boolean }>('/push/register', { method: 'POST', body: p, auth: true }),
 
-  // NEWS (pueden ser públicas, pero con auth también funciona)
+  // NEWS
   newsRates: () => req<Rates>('/news/rates', { auth: true }),
   newsFeed: () => req<Article[]>('/news/feed', { auth: true }),
 };
