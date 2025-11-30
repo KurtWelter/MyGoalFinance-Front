@@ -15,6 +15,7 @@ type User = {
   id?: string;
   email: string;
   name?: string;
+  avatar_url?: string; // ✅ importante agregarlo
   age_range?: string;
   experience?: 'beginner' | 'intermediate' | 'advanced';
   monthly_income?: number | string;

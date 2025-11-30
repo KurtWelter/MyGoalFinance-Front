@@ -61,10 +61,7 @@ export default function TabLayout() {
           name="news"
           options={{ title: 'Noticias', tabBarIcon: ({ color, size }) => <Ionicons name="newspaper" color={color} size={size} /> }}
         />
-        <Tabs.Screen
-          name="profile"
-          options={{ title: 'Perfil', tabBarIcon: ({ color, size }) => <Ionicons name="person" color={color} size={size} /> }}
-        />
+        
         <Tabs.Screen
           name="recap"
           options={{ title: 'Resumen', tabBarIcon: ({ color, size }) => <Ionicons name="stats-chart" color={color} size={size} /> }}
@@ -73,15 +70,12 @@ export default function TabLayout() {
           name="recommendation"
           options={{ title: 'Recomendado', tabBarIcon: ({ color, size }) => <Ionicons name="sparkles" color={color} size={size} /> }}
         />
-        <Tabs.Screen
-          name="dashboard"
-          options={{ title: 'Dashboard', tabBarIcon: ({ color, size }) => <Ionicons name="analytics" color={color} size={size} /> }}
-        />
-
         {/* Rutas ocultas */}
         <Tabs.Screen name="chatbot" options={{ href: null }} />
         <Tabs.Screen name="goals" options={{ href: null }} />
         <Tabs.Screen name="transactions" options={{ href: null }} />
+        <Tabs.Screen name="dashboard" options={{href: null}} />
+        <Tabs.Screen name="profile" options={{href: null}} />
       </Tabs>
     </SafeAreaView>
   );

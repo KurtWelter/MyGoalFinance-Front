@@ -56,6 +56,16 @@ const BASE_URL = (resolveApiUrl(API_URL) || '').replace(/\/$/, '');
 // Prefix normalizado (sin slash final)
 const PREFIX = (API_PREFIX || '/api').replace(/\/$/, '');
 
+/** Detecta de forma robusta si el body es un FormData (incluye polyfills de RN). */
+function isFormData(body: any): body is FormData {
+  if (!body) return false;
+  if (typeof FormData !== 'undefined' && body instanceof FormData) return true;
+
+  const maybe = body as any;
+  // En React Native normalmente solo tiene append()
+  return typeof maybe === 'object' && typeof maybe.append === 'function';
+}
+
 async function req<T>(
   path: string,
   {
@@ -67,7 +77,7 @@ async function req<T>(
     retryDelayMs = 600,
   }: ReqOpts = {}
 ): Promise<T> {
-  const isForm = (typeof FormData !== 'undefined') && (body instanceof FormData);
+  const isForm = isFormData(body);
   const headers: Record<string, string> = {};
 
   // En Edge Functions, muchas veces se espera `apikey`
@@ -96,7 +106,13 @@ async function req<T>(
     const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
     try {
-      console.log('➡️ [api]', method, url, auth ? '(auth)' : '', isForm ? '[FormData]' : (body ?? ''));
+      console.log(
+        '➡️ [api]',
+        method,
+        url,
+        auth ? '(auth)' : '',
+        isForm ? '[FormData]' : body ?? ''
+      );
 
       const res = await fetch(url, {
         method,
@@ -172,7 +188,7 @@ function monthToRange(ym: string) {
   return { from, to };
 }
 
-/** Tipos… (resto de tu archivo se mantiene igual) */
+/** Tipos… */
 type SummaryMonth = {
   month: string;
   from: string;
@@ -180,7 +196,7 @@ type SummaryMonth = {
   inc: number;
   exp: number;
   net: number;
-  byCategory: { category_id: number; total: number }[];
+  byCategory?: { category_id: number; total: number }[];
 };
 
 type ChatMsg = {
@@ -279,9 +295,9 @@ export const api = {
             : String(p.deadline).trim(),
       },
     }),
-  updateGoal: (id: string, p: any) =>
+  updateGoal: (id: string | number, p: any) =>
     req<any>(`/goals/${id}`, { method: 'PATCH', body: p, auth: true }),
-  deleteGoal: (id: string) =>
+  deleteGoal: (id: string | number) =>
     req<void>(`/goals/${id}`, { method: 'DELETE', auth: true }),
 
   // TRANSACTIONS
@@ -308,22 +324,42 @@ export const api = {
         : '';
     return req<any[]>(`/transactions${qs}`, { auth: true });
   },
+
   createTransaction: (p: any) =>
-    req<{ id: string }>('/transactions', { method: 'POST', body: p, auth: true }),
+    req<{ id: string }>('/transactions', {
+      method: 'POST',
+      body: p,
+      auth: true,
+    }),
+
   updateTransaction: (id: number | string, p: any) =>
     req<any>(`/transactions/${id}`, { method: 'PATCH', body: p, auth: true }),
+
   deleteTransaction: (id: number | string) =>
     req<void>(`/transactions/${id}`, { method: 'DELETE', auth: true }),
+
   summaryMonth: (p?: { month?: string }) =>
     req<SummaryMonth>(
-      `/transactions/summary/month${p?.month ? `?month=${encodeURIComponent(p.month)}` : ''}`,
+      `/transactions/summary/month${
+        p?.month ? `?month=${encodeURIComponent(p.month)}` : ''
+      }`,
       { auth: true }
     ),
 
+  // ✅ Importación de Excel/CSV: recibe un FormData ya armado
+  importTransactions: (form: FormData) =>
+    req<{ imported: number }>('/transactions/import', {
+      method: 'POST',
+      body: form,
+      auth: true,
+      timeoutMs: 60_000,
+    }),
+
   // CONTRIBUTIONS
-  listContributions: (goalId: string) =>
+  listContributions: (goalId: string | number) =>
     req<any[]>(`/goals/contributions/${goalId}`, { auth: true }),
-  addContribution: (goalId: string, p: any) =>
+
+  addContribution: (goalId: string | number, p: any) =>
     req<{ id: string }>(`/goals/${goalId}/contribute`, {
       method: 'POST',
       body: p,
@@ -336,7 +372,11 @@ export const api = {
   // CHAT
   chatHistory: () => req<ChatMsg[]>('/chat', { auth: true }),
   chatSend: (message: string) =>
-    req<ChatSendResponse>('/chat/message', { method: 'POST', body: { message }, auth: true }),
+    req<ChatSendResponse>('/chat/message', {
+      method: 'POST',
+      body: { message },
+      auth: true,
+    }),
   chatMessage: async (message: string) => {
     const res = await req<ChatSendResponse>('/chat', {
       method: 'POST',
@@ -348,7 +388,11 @@ export const api = {
 
   // PUSH TOKENS
   pushRegister: (p: { token: string; platform: 'ios' | 'android' | 'web' }) =>
-    req<{ ok: boolean }>('/push/register', { method: 'POST', body: p, auth: true }),
+    req<{ ok: boolean }>('/push/register', {
+      method: 'POST',
+      body: p,
+      auth: true,
+    }),
 
   // NEWS
   newsRates: () => req<Rates>('/news/rates', { auth: true }),

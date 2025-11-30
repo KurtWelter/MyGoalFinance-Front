@@ -1,84 +1,129 @@
 // app/Screen/(tabs)/transactions.tsx
-import styles from '@/Styles/transactionsStyles';
 import { Ionicons } from '@expo/vector-icons';
+import * as DocumentPicker from 'expo-document-picker';
 import { LinearGradient } from 'expo-linear-gradient';
-import { StatusBar } from 'expo-status-bar';
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from 'react';
 import {
   ActivityIndicator,
   Alert,
-  Keyboard,
+  FlatList,
   KeyboardAvoidingView,
+  Modal,
   Platform,
   Pressable,
   RefreshControl,
+  SafeAreaView,
   ScrollView,
   Text,
   TextInput,
   View,
 } from 'react-native';
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import api from '../../../constants/api';
+import styles from '../../../Styles/transactionsStyles';
 
-type Tx = {
-  id: number | string;
-  date?: string;
-  type: 'income' | 'expense';
+type TxType = 'income' | 'expense';
+
+type Transaction = {
+  id: number;
+  type: TxType;
   amount: number;
-  description?: string | null;
+  description: string | null;
+  occurred_at: string; // "YYYY-MM-DD"
+  category_id?: number | null;
 };
 
-type SummaryMonth = { inc: number; exp: number; net: number; month: string };
+type SummaryMonth = {
+  month: string;
+  from: string;
+  to: string;
+  inc: number;
+  exp: number;
+  net: number;
+};
 
 const GREEN = '#22c55e';
 const RED = '#ef4444';
 
-export default function TransactionsScreen() {
-  const insets = useSafeAreaInsets();
-  const scrollRef = useRef<ScrollView>(null);
+function todayMonth(): string {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  return `${y}-${m}`;
+}
 
-  const [busy, setBusy] = useState(true);
+function addMonth(ym: string, delta: number): string {
+  const [y, m] = ym.split('-').map(Number);
+  if (!y || !m) return ym;
+  const d = new Date(y, m - 1 + delta, 1);
+  const yy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  return `${yy}-${mm}`;
+}
+
+function formatMonthLabel(ym: string): string {
+  const [y, m] = ym.split('-').map(Number);
+  if (!y || !m) return ym;
+  const date = new Date(y, m - 1, 1);
+  return date.toLocaleDateString('es-CL', {
+    month: 'short',
+    year: 'numeric',
+  });
+}
+
+function formatCLP(n: number) {
+  try {
+    return new Intl.NumberFormat('es-CL', {
+      style: 'currency',
+      currency: 'CLP',
+      maximumFractionDigits: 0,
+    }).format(n);
+  } catch {
+    const sign = n < 0 ? '-' : '';
+    const v = Math.abs(Math.round(n))
+      .toString()
+      .replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+    return `${sign}$${v}`;
+  }
+}
+
+export default function Transactions() {
+  const [month, setMonth] = useState<string>(todayMonth());
+  const [txs, setTxs] = useState<Transaction[]>([]);
+  const [kpi, setKpi] = useState<SummaryMonth | null>(null);
+  const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
 
-  const [month, setMonth] = useState<string>(() => ymdMonth(new Date())); // "YYYY-MM"
-  const [kpi, setKpi] = useState<SummaryMonth | null>(null);
-  const [list, setList] = useState<Tx[]>([]);
-
-  // form
-  const [tab, setTab] = useState<'income' | 'expense'>('income');
+  // Modal agregar movimiento
+  const [modalVisible, setModalVisible] = useState(false);
+  const [tab, setTab] = useState<TxType>('income');
   const [amountRaw, setAmountRaw] = useState('');
   const [note, setNote] = useState('');
   const [saving, setSaving] = useState(false);
 
-  const monthLabel = useMemo(() => formatMonth(month), [month]);
+  // Importar Excel/CSV
+  const [importing, setImporting] = useState(false);
 
   const load = useCallback(async () => {
+    setLoading(true);
     try {
-      setBusy(true);
-      const [s, t] = await Promise.all([
-        api.summaryMonth({ month }),
+      const [txRes, kpiRes] = await Promise.all([
         api.listTransactions({ month }),
+        api.summaryMonth({ month }),
       ]);
 
-      // Neto = ingresos - |gastos|
-      const inc = Number((s as any)?.inc ?? 0);
-      const expRaw = Number((s as any)?.exp ?? 0); // puede venir negativo
-      const net = inc - Math.abs(expRaw);
-      setKpi({ inc, exp: expRaw, net, month });
-
-      const items = (t || []).map((x: any) => ({
-        id: x.id,
-        date: x.date || x.created_at?.slice(0, 10),
-        type: (x.type as 'income' | 'expense') ?? (x.amount >= 0 ? 'income' : 'expense'),
-        amount: Number(x.amount),
-        description: x.description ?? x.note ?? x.title ?? null,
-      })) as Tx[];
-      setList(items);
+      setTxs((txRes as any) || []);
+      setKpi((kpiRes as any) || null);
     } catch (e: any) {
-      console.error('[tx] load error', e?.message || e);
-      Alert.alert('Error', 'No se pudieron cargar tus movimientos.');
+      console.error(e);
+      Alert.alert('Ups', e?.message || 'No se pudo cargar los movimientos');
     } finally {
-      setBusy(false);
+      setLoading(false);
+      setRefreshing(false);
     }
   }, [month]);
 
@@ -86,218 +131,386 @@ export default function TransactionsScreen() {
     load();
   }, [load]);
 
-  const onRefresh = useCallback(async () => {
+  const onRefresh = () => {
     setRefreshing(true);
-    try {
-      await load();
-    } finally {
-      setRefreshing(false);
-    }
-  }, [load]);
+    load();
+  };
+
+  const openAddModal = () => {
+    setTab('income');
+    setAmountRaw('');
+    setNote('');
+    setModalVisible(true);
+  };
+
+  const closeAddModal = () => {
+    if (saving) return;
+    setModalVisible(false);
+  };
+
+  const parsedAmount = useMemo(() => {
+    const n = Number(String(amountRaw).replace(',', '.'));
+    return isFinite(n) ? n : 0;
+  }, [amountRaw]);
 
   const submit = async () => {
-    const amount = Number(String(amountRaw).replace(/[^\d-]/g, ''));
-    if (!amount || amount <= 0) {
-      return Alert.alert('Revisa el monto', 'Ingresa un monto válido.');
+    if (saving) return;
+    const amt = parsedAmount;
+    if (!(amt > 0)) {
+      Alert.alert('Monto inválido', 'Ingresa un monto mayor a 0.');
+      return;
     }
 
     try {
       setSaving(true);
       await api.createTransaction({
-        type: tab,
-        amount: tab === 'income' ? amount : -amount,
-        description: note?.trim() || null,
-        date: new Date().toISOString().slice(0, 10),
+        type: tab === 'income' ? 'income' : 'expense',
+        amount: amt,
+        description: note || null,
+        // occurred_at → el backend usa la fecha de hoy por defecto
       });
-
+      setModalVisible(false);
       setAmountRaw('');
       setNote('');
-      Keyboard.dismiss();
-      await load();
+      load();
     } catch (e: any) {
+      console.error(e);
       Alert.alert('Error', e?.message || 'No se pudo guardar el movimiento.');
     } finally {
       setSaving(false);
     }
   };
 
-  const nextMonth = () => setMonth(addMonths(month, +1));
-  const prevMonth = () => setMonth(addMonths(month, -1));
+  // 🔽 AQUÍ VA EL CAMBIO IMPORTANTE 🔽
+  const handleImportExcel = async () => {
+    if (importing) return;
 
-  // al enfocar inputs, nos aseguramos que el panel quede visible
-  const scrollToForm = useCallback(() => {
-    requestAnimationFrame(() => {
-      scrollRef.current?.scrollToEnd({ animated: true });
-    });
-  }, []);
+    try {
+      if (Platform.OS === 'web') {
+        Alert.alert(
+          'Importación no disponible en web',
+          'Por ahora la importación de Excel/CSV solo está disponible en la app móvil.'
+        );
+        return;
+      }
+
+      const result = await DocumentPicker.getDocumentAsync({
+        type: [
+          'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+          'application/vnd.ms-excel',
+          'text/csv',
+        ],
+        multiple: false,
+        copyToCacheDirectory: true,
+      });
+
+      if (result.canceled) return;
+      const asset = result.assets?.[0];
+      if (!asset || !asset.uri) {
+        Alert.alert('Error', 'No se pudo leer el archivo seleccionado.');
+        return;
+      }
+
+      setImporting(true);
+
+      const uri = asset.uri;
+      const name = asset.name || 'movimientos.xlsx';
+      const mime =
+        asset.mimeType ||
+        (name.toLowerCase().endsWith('.csv')
+          ? 'text/csv'
+          : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+
+      const form = new FormData();
+      form.append('file', {
+        uri,
+        name,
+        type: mime,
+      } as any);
+
+      const res: any = await api.importTransactions(form);
+      console.log('[IMPORT] respuesta API:', res);
+
+      // Recargar lista + KPIs
+      await load();
+
+      // Compatibilidad: acepta tanto { imported } como { inserted }
+      const imported =
+        typeof res === 'number'
+          ? res
+          : res?.imported ?? res?.inserted ?? 0;
+
+      const errors = Array.isArray(res?.errors) ? res.errors.length : 0;
+
+      let msg = `Se importaron ${imported} movimiento${
+        imported === 1 ? '' : 's'
+      }.`;
+      if (errors > 0) {
+        msg += ` ${errors} filas tuvieron errores y se omitieron.`;
+      }
+
+      Alert.alert('Importación completada', msg);
+    } catch (e: any) {
+      console.error('import error', e);
+      Alert.alert('Error', e?.message || 'No se pudo importar el archivo.');
+    } finally {
+      setImporting(false);
+    }
+  };
+  // 🔼 FIN DEL CAMBIO 🔼
+
+  const renderItem = ({ item }: { item: Transaction }) => {
+    const isIncome = item.type === 'income';
+    const sign = isIncome ? '+' : '-';
+    const color = isIncome ? GREEN : RED;
+
+    const dateStr = (() => {
+      if (!item.occurred_at) return '';
+      try {
+        const d = new Date(item.occurred_at);
+        // Forzamos formato chileno dd-mm-aaaa
+        return d.toLocaleDateString('es-CL');
+      } catch {
+        return item.occurred_at;
+      }
+    })();
+
+    return (
+      <View style={styles.txRow}>
+        <View style={styles.txLeft}>
+          <Text style={styles.txTitle}>
+            {item.description || (isIncome ? 'Ingreso' : 'Gasto')}
+          </Text>
+          <Text style={styles.txMeta}>{dateStr}</Text>
+        </View>
+        <Text style={[styles.txAmount, { color }]}>
+          {sign} {formatCLP(Math.abs(item.amount))}
+        </Text>
+      </View>
+    );
+  };
 
   return (
-    <SafeAreaView style={styles.safe} edges={['top', 'left', 'right']}>
-      <StatusBar style="light" />
-
-      {/* Header */}
-      <LinearGradient colors={['#2e3b55', '#1f2738']} style={styles.header}>
-        {/* Título grande */}
-        <Text style={styles.title}>Transacciones</Text>
-
-        {/* Selector de mes */}
-        <View style={styles.headerRow}>
-          <Pressable style={styles.navBtn} onPress={prevMonth} hitSlop={8}>
-            <Ionicons name="chevron-back" size={18} color="#e2e8f0" />
-          </Pressable>
-
-          <Text style={styles.h1}>{monthLabel}</Text>
-
-          <Pressable style={styles.navBtn} onPress={nextMonth} hitSlop={8}>
-            <Ionicons name="chevron-forward" size={18} color="#e2e8f0" />
-          </Pressable>
-        </View>
-
-        {/* KPIs */}
-        <View style={styles.kpisRow}>
-          <KPI label="Ingresos" value={kpi?.inc ?? 0} color={GREEN} />
-          <KPI label="Gastos" value={Math.abs(kpi?.exp ?? 0)} color={RED} />
-          <KPI label="Neto" value={kpi?.net ?? 0} color="#4dabf7" />
-        </View>
-      </LinearGradient>
-
-      {/* Content + Safe keyboard */}
+    <SafeAreaView style={styles.safe}>
       <KeyboardAvoidingView
-        style={{ flex: 1 }}
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        keyboardVerticalOffset={insets.top + 72} // compensa el header
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        style={styles.safe}
       >
-        <ScrollView
-          ref={scrollRef}
-          style={styles.scroll}
-          contentContainerStyle={styles.content}
-          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
-          keyboardShouldPersistTaps="handled"
-        >
-          {busy ? (
-            <View style={styles.loader}>
-              <ActivityIndicator />
-            </View>
-          ) : list.length === 0 ? (
-            <View style={styles.empty}>
-              <Text style={styles.emptyTxt}>No hay movimientos este mes.</Text>
-            </View>
-          ) : (
-            <View style={styles.card}>
-              {list.map((tx, idx) => (
-                <View key={String(tx.id)} style={[styles.row, idx > 0 && styles.rowBorder]}>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.rowTitle}>
-                      {tx.description || (tx.type === 'income' ? 'Ingreso' : 'Gasto')}
-                    </Text>
-                    {!!tx.date && <Text style={styles.rowMeta}>{tx.date}</Text>}
-                  </View>
-                  <Text style={[styles.rowAmount, { color: tx.type === 'income' ? GREEN : RED }]}>
-                    {tx.type === 'income' ? '+' : '-'}
-                    {formatCLP(Math.abs(tx.amount))}
-                  </Text>
-                </View>
-              ))}
-            </View>
-          )}
-
-          {/* Panel para agregar movimiento (dentro del ScrollView) */}
-          <View
-            style={[
-              styles.addPanel,
-              {
-                paddingBottom: (styles as any).addPanel?.paddingBottom ?? 12,
-                marginBottom: insets.bottom + 8,
-              },
-            ]}
+        <View style={styles.container}>
+          {/* HEADER + KPIs */}
+          <LinearGradient
+            colors={['#0f172a', '#020617']}
+            style={styles.header}
           >
-            {/* Tabs ingreso/gasto */}
-            <View style={styles.tabs}>
+            <View style={styles.headerRow}>
               <Pressable
-                onPress={() => setTab('income')}
-                style={[styles.tabBtn, tab === 'income' ? styles.tabActive : styles.tabIdle]}
+                style={styles.navBtn}
+                onPress={() => setMonth((prev) => addMonth(prev, -1))}
               >
-                <Text style={tab === 'income' ? styles.tabActiveTxt : styles.tabTxt}>Ingreso</Text>
+                <Ionicons
+                  name="chevron-back"
+                  size={18}
+                  color="#e5e7eb"
+                />
               </Pressable>
+
+              <Text style={styles.h1}>{formatMonthLabel(month)}</Text>
+
               <Pressable
-                onPress={() => setTab('expense')}
-                style={[styles.tabBtn, tab === 'expense' ? styles.tabActive : styles.tabIdle]}
+                style={styles.navBtn}
+                onPress={() => setMonth((prev) => addMonth(prev, 1))}
               >
-                <Text style={tab === 'expense' ? styles.tabActiveTxt : styles.tabTxt}>Gasto</Text>
+                <Ionicons
+                  name="chevron-forward"
+                  size={18}
+                  color="#e5e7eb"
+                />
               </Pressable>
             </View>
 
-            {/* Monto */}
-            <TextInput
-              style={styles.input}
-              placeholder="Monto"
-              placeholderTextColor="#94a3b8"
-              keyboardType="numeric"
-              value={amountRaw}
-              onChangeText={setAmountRaw}
-              onFocus={scrollToForm}
-              returnKeyType="next"
-            />
-            {/* Nota */}
-            <TextInput
-              style={styles.input}
-              placeholder="Descripción (opcional)"
-              placeholderTextColor="#94a3b8"
-              value={note}
-              onChangeText={setNote}
-              onFocus={scrollToForm}
-              returnKeyType="done"
-              onSubmitEditing={submit}
-            />
+            <View style={styles.kpisRow}>
+              <View style={[styles.kpiCard, { borderColor: GREEN + '55' }]}>
+                <Text style={styles.kpiLabel}>Ingresos</Text>
+                <Text style={[styles.kpiValue, { color: GREEN }]}>
+                  {formatCLP(kpi?.inc ?? 0)}
+                </Text>
+              </View>
+              <View style={[styles.kpiCard, { borderColor: RED + '55' }]}>
+                <Text style={styles.kpiLabel}>Gastos</Text>
+                <Text style={[styles.kpiValue, { color: RED }]}>
+                  {formatCLP(Math.abs(kpi?.exp ?? 0))}
+                </Text>
+              </View>
+              <View style={[styles.kpiCard, { borderColor: '#38bdf855' }]}>
+                <Text style={styles.kpiLabel}>Neto</Text>
+                <Text style={[styles.kpiValue, { color: '#38bdf8' }]}>
+                  {formatCLP(kpi?.net ?? 0)}
+                </Text>
+              </View>
+            </View>
 
-            <Pressable
-              style={[styles.btnPrimary, saving && { opacity: 0.7 }]}
-              onPress={submit}
-              disabled={saving}
-            >
-              <Ionicons name="save" size={18} color="#1f2738" />
-              <Text style={styles.btnPrimaryTxt}>
-                {saving ? 'Guardando…' : 'Guardar movimiento'}
-              </Text>
-            </Pressable>
+            {/* Botón Importar Excel/CSV */}
+            <View style={styles.actionsRow}>
+              <Pressable
+                style={styles.btnSecondary}
+                onPress={handleImportExcel}
+                disabled={importing}
+              >
+                <Ionicons
+                  name="cloud-upload-outline"
+                  size={14}
+                  color="#e2e8f0"
+                />
+                <Text style={styles.btnSecondaryTxt}>
+                  {importing ? 'Importando...' : 'Importar Excel/CSV'}
+                </Text>
+              </Pressable>
+            </View>
+          </LinearGradient>
+
+          {/* LISTA */}
+          <View style={styles.listWrap}>
+            {loading && txs.length === 0 ? (
+              <View style={styles.loader}>
+                <ActivityIndicator color="#e5e7eb" />
+              </View>
+            ) : (
+              <FlatList
+                data={txs}
+                keyExtractor={(item) => String(item.id)}
+                renderItem={renderItem}
+                ItemSeparatorComponent={() => <View style={styles.separator} />}
+                contentContainerStyle={
+                  txs.length === 0 ? styles.emptyContent : undefined
+                }
+                ListEmptyComponent={
+                  <View style={styles.emptyBox}>
+                    <Text style={styles.emptyText}>
+                      Aún no tienes movimientos en este mes.
+                    </Text>
+                  </View>
+                }
+                refreshControl={
+                  <RefreshControl
+                    refreshing={refreshing}
+                    onRefresh={onRefresh}
+                    tintColor="#fff"
+                  />
+                }
+              />
+            )}
           </View>
-        </ScrollView>
+
+          {/* FAB Agregar movimiento */}
+          <Pressable
+            style={styles.fab}
+            onPress={openAddModal}
+          >
+            <Ionicons name="add" size={24} color="#020617" />
+          </Pressable>
+
+          {/* MODAL: Agregar movimiento */}
+          <Modal
+            visible={modalVisible}
+            transparent
+            animationType="slide"
+            onRequestClose={closeAddModal}
+          >
+            <View style={styles.modalBackdrop}>
+              <View style={styles.modalSheet}>
+                <View style={styles.modalHandle} />
+
+                <Text style={styles.modalTitle}>Nuevo movimiento</Text>
+
+                {/* Tabs Ingreso / Gasto */}
+                <View style={styles.tabRow}>
+                  <Pressable
+                    style={[
+                      styles.tabChip,
+                      tab === 'income' && styles.tabChipActive,
+                    ]}
+                    onPress={() => setTab('income')}
+                  >
+                    <Text
+                      style={[
+                        styles.tabTxt,
+                        tab === 'income' && styles.tabTxtActive,
+                      ]}
+                    >
+                      Ingreso
+                    </Text>
+                  </Pressable>
+                  <Pressable
+                    style={[
+                      styles.tabChip,
+                      tab === 'expense' && styles.tabChipActive,
+                    ]}
+                    onPress={() => setTab('expense')}
+                  >
+                    <Text
+                      style={[
+                        styles.tabTxt,
+                        tab === 'expense' && styles.tabTxtActive,
+                      ]}
+                    >
+                      Gasto
+                    </Text>
+                  </Pressable>
+                </View>
+
+                <ScrollView
+                  style={styles.modalScroll}
+                  contentContainerStyle={styles.modalContent}
+                  keyboardShouldPersistTaps="handled"
+                >
+                  <Text style={styles.fieldLabel}>Monto</Text>
+                  <TextInput
+                    value={amountRaw}
+                    onChangeText={setAmountRaw}
+                    keyboardType="numeric"
+                    placeholder="Ej: 150000"
+                    placeholderTextColor="#6b7280"
+                    style={styles.input}
+                  />
+
+                  <Text style={styles.fieldLabel}>Descripción (opcional)</Text>
+                  <TextInput
+                    value={note}
+                    onChangeText={setNote}
+                    placeholder={
+                      tab === 'income'
+                        ? 'Sueldo, freelance...'
+                        : 'Supermercado, cuentas...'
+                    }
+                    placeholderTextColor="#6b7280"
+                    style={[styles.input, styles.inputMultiline]}
+                    multiline
+                  />
+                </ScrollView>
+
+                <View style={styles.modalActions}>
+                  <Pressable
+                    style={styles.btnGhost}
+                    onPress={closeAddModal}
+                    disabled={saving}
+                  >
+                    <Text style={styles.btnGhostTxt}>Cancelar</Text>
+                  </Pressable>
+                  <Pressable
+                    style={styles.btnPrimary}
+                    onPress={submit}
+                    disabled={saving}
+                  >
+                    <Text style={styles.btnPrimaryTxt}>
+                      {saving ? 'Guardando...' : 'Guardar'}
+                    </Text>
+                  </Pressable>
+                </View>
+              </View>
+            </View>
+          </Modal>
+        </View>
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
-}
-
-/* ====================== UI bits ====================== */
-
-function KPI({ label, value, color }: { label: string; value: number; color: string }) {
-  return (
-    <View style={styles.kpi}>
-      <Text style={styles.kpiLabel}>{label}</Text>
-      <Text style={[styles.kpiValue, { color }]}>{formatCLP(value)}</Text>
-    </View>
-  );
-}
-
-/* ====================== helpers ====================== */
-
-function formatCLP(n: number) {
-  try {
-    return n.toLocaleString('es-CL', { style: 'currency', currency: 'CLP', maximumFractionDigits: 0 });
-  } catch {
-    return `$${Math.round(n)}`;
-  }
-}
-
-function ymdMonth(d: Date) {
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-}
-function addMonths(ym: string, delta: number) {
-  const [y, m] = ym.split('-').map(Number);
-  const d = new Date(y, m - 1 + delta, 1);
-  return ymdMonth(d);
-}
-function formatMonth(ym: string) {
-  const [y, m] = ym.split('-').map(Number);
-  const d = new Date(y, m - 1, 1);
-  return d.toLocaleDateString('es-CL', { year: 'numeric', month: 'long' });
 }
