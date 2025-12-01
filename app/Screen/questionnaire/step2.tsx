@@ -9,7 +9,7 @@ export default function Step2() {
 
   const handleSelect = (level: string) => {
     setKnowledge(level); // guarda en Zustand
-    router.replace("/Screen/questionnaire/step3"); // avanza al Step3
+    router.replace("/Screen/questionnaire/step4"); // avanza al Step3
   };
 
   return (

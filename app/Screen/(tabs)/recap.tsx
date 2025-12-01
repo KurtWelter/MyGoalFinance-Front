@@ -1,4 +1,5 @@
 // app/Screen/(tabs)/recap.tsx
+import { Feather } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
@@ -139,12 +140,10 @@ export default function RecapScreen() {
   };
 
   return (
-    <SafeAreaView style={sx.safe} edges={['top', 'left', 'right']}>
-      {/* Header con la paleta del Home */}
-      <LinearGradient colors={['#2e3b55', '#1f2738']} style={sx.header}>
-        <Text style={sx.brand}>MyGoalFinance</Text>
+    <SafeAreaView style={sx.safe} edges={['left', 'right']}>
+      <LinearGradient colors={['#0f172a', '#0f172a']} style={sx.header}>
         <Text style={sx.h1}>Resumen de tu Perfil</Text>
-        <Text style={sx.subtitle}>¡Hola, {firstName}! Aquí va tu snapshot personal</Text>
+        <Text style={sx.subtitle}>{firstName}, aquí va tu snapshot personal</Text>
       </LinearGradient>
 
       <ScrollView
@@ -156,14 +155,14 @@ export default function RecapScreen() {
       >
         {/* 1) Estado de tu perfil */}
         <View style={sx.card}>
+          <View style={sx.cardAccent} />
           <View style={sx.cardTop}>
-            <Text style={sx.cardTitle}>📋 Estado de tu perfil</Text>
-            <Pressable
-              onPress={() => router.push('/Screen/editprofile')}
-              hitSlop={8}
-            >
-              <Text style={sx.link}>Editar</Text>
-            </Pressable>
+            <View style={sx.cardTopLeft}>
+              <View style={sx.cardIconWrap}>
+                <Feather name="user" size={18} color="#000" />
+              </View>
+              <Text style={sx.cardTitle}>Estado de tu perfil</Text>
+            </View>
           </View>
 
           <Row label="Edad">
@@ -182,13 +181,6 @@ export default function RecapScreen() {
                 : 'No definido'}
             </Text>
           </Row>
-          <Row label="Ingresos mensuales">
-            <Text style={sx.value}>
-              {profile?.monthly_income != null
-                ? CLP.format(profile.monthly_income)
-                : 'No definido'}
-            </Text>
-          </Row>
           <Row label="Meta financiera principal">
             <Text style={sx.value}>
               {profile?.finance_goal || 'No definido'}
@@ -198,7 +190,15 @@ export default function RecapScreen() {
 
         {/* 2) Salud financiera (tasa + emergencia) */}
         <View style={sx.card}>
-          <Text style={sx.cardTitle}>🩺 Salud financiera</Text>
+          <View style={sx.cardAccent} />
+          <View style={sx.cardTop}>
+            <View style={sx.cardTopLeft}>
+              <View style={sx.cardIconWrap}>
+                <Feather name="activity" size={18} color="#000" />
+              </View>
+              <Text style={sx.cardTitle}>Salud financiera</Text>
+            </View>
+          </View>
 
           <Row label="Tasa de ahorro">
             <Text style={sx.value}>
@@ -240,7 +240,7 @@ export default function RecapScreen() {
             onPress={() => router.push('/Screen/(tabs)/goals')}
           />
           <Tile
-            title="Añadir gasto/ingreso"
+            title="Añadir movimiento"
             onPress={() => router.push('/Screen/(tabs)/transactions')}
           />
           <Tile
@@ -273,7 +273,13 @@ function Row({ label, children }: { label: string; children: React.ReactNode }) 
 
 function Tile({ title, onPress }: { title: string; onPress: () => void }) {
   return (
-    <Pressable onPress={onPress} style={sx.tile}>
+    <Pressable 
+      onPress={onPress} 
+      style={({ pressed }) => [
+        sx.tile,
+        pressed && { transform: [{ scale: 0.95 }], opacity: 0.8 }
+      ]}
+    >
       <Text style={sx.tileTxt}>{title}</Text>
     </Pressable>
   );
@@ -282,7 +288,7 @@ function Tile({ title, onPress }: { title: string; onPress: () => void }) {
 /* ---------- Estilos (paleta del Home) ---------- */
 
 const sx = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: '#0f172a' },
+  safe: { flex: 1, backgroundColor: '#0f172a', paddingTop: 0 },
   header: {
     paddingHorizontal: 16,
     paddingTop: 16,
@@ -308,10 +314,25 @@ const sx = StyleSheet.create({
   content: { padding: 16 },
 
   card: {
-    backgroundColor: '#111827',
+    backgroundColor: '#1f2738',
     borderRadius: 14,
     padding: 14,
     marginBottom: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(148,163,184,0.24)',
+    shadowColor: '#000',
+    shadowOpacity: 0.22,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 8,
+    overflow: 'hidden',
+  },
+  cardAccent: {
+    height: 4,
+    backgroundColor: '#f59e0b',
+    borderRadius: 999,
+    marginBottom: 10,
+    opacity: 0.95,
   },
   cardTop: {
     flexDirection: 'row',
@@ -319,10 +340,25 @@ const sx = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 8,
   },
+  cardTopLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  cardIconWrap: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#ffffff',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(148,163,184,0.4)',
+  },
   cardTitle: {
-    color: '#e5e7eb',
+    color: '#e8edf7',
     fontSize: 16,
-    fontWeight: '700',
+    fontWeight: '800',
   },
 
   row: {
@@ -336,12 +372,12 @@ const sx = StyleSheet.create({
   label: { color: '#94a3b8', fontSize: 14 },
   value: { color: '#e5e7eb', fontSize: 14, fontWeight: '600' },
 
-  link: { color: '#ffb300', fontWeight: '700' },
+  link: { color: '#f59e0b', fontWeight: '800' },
 
   itemTitle: { color: '#cbd5e1', fontWeight: '600', marginBottom: 4 },
   progressBar: {
     height: 8,
-    backgroundColor: '#1f2937',
+    backgroundColor: 'rgba(255,255,255,0.08)',
     borderRadius: 999,
     overflow: 'hidden',
     marginTop: 6,
@@ -370,16 +406,22 @@ const sx = StyleSheet.create({
   },
   tile: {
     flex: 1,
-    backgroundColor: '#0b1324',
+    backgroundColor: '#f59e0b',
     borderRadius: 12,
-    padding: 14,
+    padding: 16,
     alignItems: 'center',
     justifyContent: 'center',
+    shadowColor: '#f59e0b',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 8,
   },
   tileTxt: {
-    color: '#e5e7eb',
-    fontWeight: '700',
+    color: '#1f2738',
+    fontWeight: '800',
     textAlign: 'center',
+    fontSize: 14,
   },
 
   disclaimer: {

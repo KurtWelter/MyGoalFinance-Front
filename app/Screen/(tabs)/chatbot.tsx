@@ -1,5 +1,6 @@
 // app/Screen/chatbot.tsx
 import styles from '@/Styles/chatbotStyles';
+import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
@@ -35,6 +36,13 @@ export default function Chatbot() {
   const [typing, setTyping] = useState(false);
   const [streamingText, setStreamingText] = useState('');
 
+  // FAB
+  const [fabOpen, setFabOpen] = useState(false);
+
+  // posición base del FAB (debajo del header)
+  const fabTop =
+    Platform.OS === 'ios' ? insets.top + 90 : insets.top + 80;
+
   // Cargar historial
   useEffect(() => {
     let cancel = false;
@@ -64,8 +72,8 @@ export default function Chatbot() {
       if (esRef.current) {
         try {
           esRef.current.close();
-        } catch (error) {
-          // Silently handle any errors during cleanup
+        } catch {
+          // ignore
         }
         esRef.current = null;
       }
@@ -77,10 +85,10 @@ export default function Chatbot() {
     [input, sending]
   );
 
-  const handleSend = async () => {
-    if (!canSend) return;
-    const text = input.trim();
-    setInput('');
+  // Lógica común para enviar un mensaje (input o FAB)
+  const sendText = async (raw: string) => {
+    const text = raw.trim();
+    if (!text || sending) return;
 
     // pinta optimista
     const tempId = `local-${Date.now()}`;
@@ -89,17 +97,17 @@ export default function Chatbot() {
       listRef.current?.scrollToEnd({ animated: true })
     );
 
-    // cierra stream previo si hubiese
+    // cerrar stream previo
     if (esRef.current) {
       try {
         esRef.current.close();
-      } catch (error) {
-        // Silently handle any errors during cleanup
+      } catch {
+        // ignore
       }
       esRef.current = null;
     }
 
-    // ————— Fallback REST por si el stream no existe o falla —————
+    // ————— Fallback REST —————
     const sendViaRestFallback = async () => {
       try {
         const res = await api.chatSend(text); // POST /api/chat/message
@@ -140,7 +148,6 @@ export default function Chatbot() {
         text
       )}`;
 
-      // ----- INTENTO SSE -----
       const es = new EventSource(url, {
         headers: token ? { Authorization: `Bearer ${token}` } : undefined,
       });
@@ -155,8 +162,8 @@ export default function Chatbot() {
         if (!gotAnyDelta && !finished) {
           try {
             es.close();
-          } catch (error) {
-            // Silently handle any errors during cleanup
+          } catch {
+            // ignore
           }
           sendViaRestFallback();
         }
@@ -196,8 +203,8 @@ export default function Chatbot() {
         );
         try {
           es.close();
-        } catch (error) {
-          // Silently handle any errors during cleanup
+        } catch {
+          // ignore
         }
         esRef.current = null;
         setSending(false);
@@ -209,14 +216,14 @@ export default function Chatbot() {
         clearTimeout(startupTimeout);
         try {
           es.close();
-        } catch (error) {
-          // Silently handle any errors during cleanup
+        } catch {
+          // ignore
         }
-        // Si no llegó nada del stream -> REST
         if (!gotAnyDelta) {
+          // nada del stream -> REST
           sendViaRestFallback();
         } else {
-          // Si alcanzamos a recibir algo, cerramos con lo acumulado
+          // hubo algo, cerramos con lo acumulado
           setTyping(false);
           setStreamingText('');
           setMessages((prev) => [
@@ -228,9 +235,20 @@ export default function Chatbot() {
       };
     } catch (e: any) {
       console.error('stream send error', e?.message || e);
-      // Cualquier excepción: REST
       await sendViaRestFallback();
     }
+  };
+
+  const handleSend = () => {
+    if (!canSend) return;
+    const text = input.trim();
+    setInput('');
+    sendText(text);
+  };
+
+  const handleQuickPrompt = (prompt: string) => {
+    setFabOpen(false);
+    sendText(prompt);
   };
 
   const renderItem = ({ item }: { item: MsgUI }) => {
@@ -243,7 +261,10 @@ export default function Chatbot() {
           style={[styles.bubble, isUser ? styles.userBubble : styles.botBubble]}
         >
           <Text
-            style={[styles.bubbleText, isUser ? styles.userText : styles.botText]}
+            style={[
+              styles.bubbleText,
+              isUser ? styles.userText : styles.botText,
+            ]}
           >
             {item.text}
           </Text>
@@ -257,8 +278,8 @@ export default function Chatbot() {
       edges={[]}
       style={{ flex: 1, backgroundColor: '#1f2738', paddingTop: 0 }}
     >
-      {/* Header */}
       <LinearGradient colors={['#2b344a', '#1f2738']} style={styles.container}>
+        {/* Header */}
         <View style={styles.header}>
           <TouchableOpacity
             style={styles.backButton}
@@ -284,9 +305,10 @@ export default function Chatbot() {
                 <Text style={styles.hint}>Cargando conversación…</Text>
               </View>
             ) : messages.length === 0 ? (
-              // Mostrar texto flotante cuando no hay mensajes
               <View style={styles.centerFill}>
-                <Text style={styles.welcomeText}>¿Qué quieres aprender hoy?</Text>
+                <Text style={styles.welcomeText}>
+                  ¿Qué quieres aprender hoy?
+                </Text>
               </View>
             ) : (
               <FlatList
@@ -304,13 +326,14 @@ export default function Chatbot() {
                 contentContainerStyle={[
                   styles.chatContent,
                   {
-                    // deja sitio para la barra de input
                     paddingBottom:
-                      Platform.OS === 'ios' 
-                        ? insets.bottom + Math.min(120, Math.max(48, inputHeight)) + 20
+                      Platform.OS === 'ios'
+                        ? insets.bottom +
+                          Math.min(120, Math.max(48, inputHeight)) +
+                          20
                         : Platform.OS === 'android'
-                          ? Math.min(120, Math.max(48, inputHeight)) + 80
-                          : Math.min(120, Math.max(48, inputHeight)) + 80,
+                        ? Math.min(120, Math.max(48, inputHeight)) + 80
+                        : Math.min(120, Math.max(48, inputHeight)) + 80,
                   },
                 ]}
                 ListFooterComponent={
@@ -339,18 +362,21 @@ export default function Chatbot() {
             )}
           </View>
 
-          {/* Barra de entrada SIEMPRE ABAJO */}
-          <View style={[
-            styles.inputBar, 
-            { 
-              paddingBottom: Platform.OS === 'ios' 
-                ? insets.bottom + 70
-                : Platform.OS === 'android' 
-                  ? 16 
-                  : 12,
-              marginBottom: Platform.OS === 'web' ? 60 : 0
-            }
-          ]}>
+          {/* Barra de entrada */}
+          <View
+            style={[
+              styles.inputBar,
+              {
+                paddingBottom:
+                  Platform.OS === 'ios'
+                    ? insets.bottom + 70
+                    : Platform.OS === 'android'
+                    ? 16
+                    : 12,
+                marginBottom: Platform.OS === 'web' ? 60 : 0,
+              },
+            ]}
+          >
             <TextInput
               style={[
                 styles.input,
@@ -380,6 +406,100 @@ export default function Chatbot() {
             </TouchableOpacity>
           </View>
         </KeyboardAvoidingView>
+
+        {/* Menú del FAB con atajos (ahora colgando debajo del FAB) */}
+        {fabOpen && (
+          <View
+            style={{
+              position: 'absolute',
+              right: 24,
+              top: fabTop + 60,
+              backgroundColor: '#2b344a',
+              borderRadius: 16,
+              paddingVertical: 10,
+              paddingHorizontal: 12,
+              shadowColor: '#000',
+              shadowOpacity: 0.3,
+              shadowOffset: { width: 0, height: 4 },
+              shadowRadius: 6,
+              elevation: 5,
+              maxWidth: 260,
+            }}
+          >
+            <Text
+              style={{
+                color: '#c5d0ea',
+                fontSize: 12,
+                marginBottom: 6,
+                fontWeight: '600',
+              }}
+            >
+              Atajos rápidos
+            </Text>
+
+            {[
+              {
+                label: 'Consejos para ahorrar',
+                prompt:
+                  'Dame consejos concretos para empezar a ahorrar dinero según buenas prácticas de educación financiera.',
+              },
+              {
+                label: 'Crear presupuesto mensual',
+                prompt:
+                  'Ayúdame a crear un presupuesto mensual usando la regla 50/30/20, con montos de ejemplo.',
+              },
+              {
+                label: 'Ordenar deudas',
+                prompt:
+                  'Qué hábitos puedo adoptar para ordenar mis deudas y pagarlas más rápido de forma responsable.',
+              },
+            ].map((opt) => (
+              <TouchableOpacity
+                key={opt.label}
+                style={{
+                  paddingVertical: 6,
+                  paddingHorizontal: 8,
+                  borderRadius: 10,
+                  backgroundColor: '#39425a',
+                  marginTop: 4,
+                }}
+                onPress={() => handleQuickPrompt(opt.prompt)}
+              >
+                <Text style={{ color: '#e8edf7', fontSize: 12 }}>
+                  {opt.label}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        )}
+
+        {/* FAB arriba a la derecha */}
+        <TouchableOpacity
+          onPress={() => setFabOpen((v) => !v)}
+          activeOpacity={0.85}
+          style={{
+            position: 'absolute',
+            right: 24,
+            top: fabTop,
+            width: 56,
+            height: 56,
+            borderRadius: 28,
+            backgroundColor: '#f3b34c',
+            justifyContent: 'center',
+            alignItems: 'center',
+            shadowColor: '#000',
+            shadowOpacity: 0.35,
+            shadowOffset: { width: 0, height: 4 },
+            shadowRadius: 6,
+            elevation: 6,
+          }}
+        >
+          <Ionicons
+            name={fabOpen ? 'close' : 'sparkles'}
+            size={24}
+            color="#1f2738"
+          />
+        </TouchableOpacity>
       </LinearGradient>
     </SafeAreaView>
   );

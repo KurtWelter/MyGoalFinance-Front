@@ -33,13 +33,17 @@ function resolveApiUrl(configUrl?: string) {
 
   if (Platform.OS === 'web') {
     const host =
-      (typeof window !== 'undefined' && window.location?.hostname) || 'localhost';
+      (typeof window !== 'undefined' && window.location?.hostname) ||
+      'localhost';
     let port = '3000';
     try {
       if (explicit) {
         const u = new URL(explicit);
         if (u.port) port = u.port;
-      } else if (typeof window !== 'undefined' && window.location?.port) {
+      } else if (
+        typeof window !== 'undefined' &&
+        window.location?.port
+      ) {
         port = window.location.port || '3000';
       }
     } catch {}
@@ -184,7 +188,10 @@ function monthToRange(ym: string) {
   if (!y || !m) return { from: ym, to: ym };
   const from = `${y}-${String(m).padStart(2, '0')}-01`;
   const last = new Date(y, m, 0).getDate();
-  const to = `${y}-${String(m).padStart(2, '0')}-${String(last).padStart(2, '0')}`;
+  const to = `${y}-${String(m).padStart(2, '0')}-${String(last).padStart(
+    2,
+    '0'
+  )}`;
   return { from, to };
 }
 
@@ -193,10 +200,17 @@ type SummaryMonth = {
   month: string;
   from: string;
   to: string;
+
+  // Movimientos Excel / generales
   inc: number;
   exp: number;
   net: number;
   byCategory?: { category_id: number; total: number }[];
+
+  // Cuenta MyGoalFinance (depósitos Webpay / retiros)
+  deposits?: number;
+  withdrawals?: number;
+  balance?: number;
 };
 
 type ChatMsg = {
@@ -237,12 +251,13 @@ export const api = {
     ),
 
   login: (p: { email: string; password: string }) =>
-    req<{ access_token: string; user?: any }>(
-      '/auth/login',
-      { method: 'POST', body: p }
-    ),
+    req<{ access_token: string; user?: any }>('/auth/login', {
+      method: 'POST',
+      body: p,
+    }),
 
-  logout: () => req<{ ok: boolean }>('/auth/logout', { method: 'POST', auth: true }),
+  logout: () =>
+    req<{ ok: boolean }>('/auth/logout', { method: 'POST', auth: true }),
   me: () => req<any>('/auth/me', { auth: true }),
 
   // PROFILE
@@ -286,7 +301,8 @@ export const api = {
       body: {
         ...p,
         description:
-          p?.description == null || String(p.description).trim() === ''
+          p?.description == null ||
+          String(p.description).trim() === ''
             ? undefined
             : String(p.description).trim(),
         deadline:
@@ -320,7 +336,9 @@ export const api = {
     }
     const qs =
       from || to
-        ? `?from=${encodeURIComponent(from ?? '')}&to=${encodeURIComponent(to ?? '')}`
+        ? `?from=${encodeURIComponent(from ?? '')}&to=${encodeURIComponent(
+            to ?? ''
+          )}`
         : '';
     return req<any[]>(`/transactions${qs}`, { auth: true });
   },
@@ -333,10 +351,17 @@ export const api = {
     }),
 
   updateTransaction: (id: number | string, p: any) =>
-    req<any>(`/transactions/${id}`, { method: 'PATCH', body: p, auth: true }),
+    req<any>(`/transactions/${id}`, {
+      method: 'PATCH',
+      body: p,
+      auth: true,
+    }),
 
   deleteTransaction: (id: number | string) =>
-    req<void>(`/transactions/${id}`, { method: 'DELETE', auth: true }),
+    req<void>(`/transactions/${id}`, {
+      method: 'DELETE',
+      auth: true,
+    }),
 
   summaryMonth: (p?: { month?: string }) =>
     req<SummaryMonth>(
@@ -353,6 +378,19 @@ export const api = {
       body: form,
       auth: true,
       timeoutMs: 60_000,
+    }),
+
+  // 💰 DEPÓSITOS (Webpay)
+  createDeposit: (p: { amount: number }) =>
+    req<{
+      provider?: string;
+      deposit_id?: string;
+      token?: string;
+      payment_url?: string;
+    }>('/payments/deposit', {
+      method: 'POST',
+      body: p,
+      auth: true,
     }),
 
   // CONTRIBUTIONS

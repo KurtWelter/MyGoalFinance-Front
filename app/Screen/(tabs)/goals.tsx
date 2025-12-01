@@ -1,7 +1,12 @@
 // app/Screen/(tabs)/goals.tsx
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -22,7 +27,7 @@ import Section from '../../../components/ui/Section';
 import api from '../../../constants/api';
 import { colors } from '../../../constants/theme';
 import styles from '../../../Styles/goalsStyles';
-import modalStyles from '../../../Styles/modalStyles'; // ✅ alias correcto
+import modalStyles from '../../../Styles/modalStyles';
 
 type Goal = {
   id: string | number;
@@ -33,8 +38,15 @@ type Goal = {
   deadline?: string | null;
 };
 
+/** Meta completada si current >= target y target > 0 */
+function isGoalCompleted(g: Goal): boolean {
+  const target = Number(g.target_amount || 0);
+  const current = Number(g.current_amount || 0);
+  return target > 0 && current >= target;
+}
+
 export default function GoalsScreen() {
-  // form crear
+  // form crear (usado en el modal de nueva meta)
   const [title, setTitle] = useState('');
   const [amountRaw, setAmountRaw] = useState('');
   const amount = useMemo(() => toNumber(amountRaw), [amountRaw]);
@@ -45,15 +57,25 @@ export default function GoalsScreen() {
   const [creating, setCreating] = useState(false);
   const [goals, setGoals] = useState<Goal[]>([]);
 
-  // modales
+  // visibilidad del modal de nueva meta (FAB)
+  const [createVisible, setCreateVisible] = useState(false);
+
+  // modales de edición / borrado / aporte
   const [editing, setEditing] = useState<{
     id: string | number;
     title: string;
     targetRaw: string;
   } | null>(null);
 
-  const [removing, setRemoving] = useState<{ id: string | number; title: string } | null>(null);
-  const [custom, setCustom] = useState<{ id: string | number; amountRaw: string } | null>(null);
+  const [removing, setRemoving] = useState<{
+    id: string | number;
+    title: string;
+  } | null>(null);
+
+  const [custom, setCustom] = useState<{
+    id: string | number;
+    amountRaw: string;
+  } | null>(null);
 
   const [savingEdit, setSavingEdit] = useState(false);
   const [savingCustom, setSavingCustom] = useState(false);
@@ -85,10 +107,27 @@ export default function GoalsScreen() {
     }
   }, [load]);
 
+  // separo metas activas vs completadas
+  const activeGoals = useMemo(
+    () => goals.filter((g) => !isGoalCompleted(g)),
+    [goals]
+  );
+  const completedGoals = useMemo(
+    () => goals.filter((g) => isGoalCompleted(g)),
+    [goals]
+  );
+
   const onCreate = async () => {
-    if (!title.trim()) return Alert.alert('Falta el título', 'Escribe un nombre para tu meta.');
+    if (!title.trim())
+      return Alert.alert(
+        'Falta el título',
+        'Escribe un nombre para tu meta.'
+      );
     if (!amount || amount <= 0) {
-      return Alert.alert('Monto inválido', 'Ingresa el monto objetivo en CLP.');
+      return Alert.alert(
+        'Monto inválido',
+        'Ingresa el monto objetivo en CLP.'
+      );
     }
     try {
       setCreating(true);
@@ -101,6 +140,7 @@ export default function GoalsScreen() {
       setTitle('');
       setAmountRaw('');
       await load();
+      setCreateVisible(false);
       Alert.alert('Listo', 'Tu meta fue creada.');
     } catch (e: any) {
       Alert.alert('Error', e?.message || 'No se pudo crear la meta');
@@ -110,9 +150,30 @@ export default function GoalsScreen() {
   };
 
   const onQuickAdd = async (goalId: string | number, add: number) => {
+    const goal = goals.find((g) => g.id === goalId);
+    const wasCompleted = goal ? isGoalCompleted(goal) : false;
+
+    const predictedCompleted =
+      goal &&
+      isGoalCompleted({
+        ...goal,
+        current_amount:
+          Number(goal.current_amount || 0) + Math.max(0, Number(add || 0)),
+      });
+
     try {
-      await api.addContribution(String(goalId), { amount: add, note: 'Aporte rápido' });
+      await api.addContribution(String(goalId), {
+        amount: add,
+        note: 'Aporte rápido',
+      });
       await load();
+
+      if (goal && !wasCompleted && predictedCompleted) {
+        Alert.alert(
+          '🎉 ¡Meta completada!',
+          `Felicitaciones, alcanzaste tu meta "${goal.title}".`
+        );
+      }
     } catch (e: any) {
       Alert.alert('Error', e?.message || 'No se pudo registrar el aporte.');
     }
@@ -128,14 +189,25 @@ export default function GoalsScreen() {
 
   const saveEdit = async () => {
     if (!editing) return;
-    const title = editing.title.trim();
+    const newTitle = editing.title.trim();
     const target_amount = toNumber(editing.targetRaw);
-    if (!title) return Alert.alert('Título requerido', 'Ingresa el nombre de la meta.');
-    if (!target_amount) return Alert.alert('Monto inválido', 'Ingresa un monto mayor a 0.');
+    if (!newTitle)
+      return Alert.alert(
+        'Título requerido',
+        'Ingresa el nombre de la meta.'
+      );
+    if (!target_amount)
+      return Alert.alert(
+        'Monto inválido',
+        'Ingresa un monto mayor a 0.'
+      );
 
     try {
       setSavingEdit(true);
-      await api.updateGoal(String(editing.id), { title, target_amount }); // ajusta firma si difiere
+      await api.updateGoal(String(editing.id), {
+        title: newTitle,
+        target_amount,
+      });
       setEditing(null);
       await load();
       Alert.alert('Guardado', 'Los cambios fueron aplicados.');
@@ -167,13 +239,38 @@ export default function GoalsScreen() {
 
   const saveCustom = async () => {
     if (!custom) return;
-    const amount = toNumber(custom.amountRaw);
-    if (!amount) return Alert.alert('Monto inválido', 'Ingresa un monto mayor a 0.');
+    const value = toNumber(custom.amountRaw);
+    if (!value)
+      return Alert.alert(
+        'Monto inválido',
+        'Ingresa un monto mayor a 0.'
+      );
+
+    const goal = goals.find((g) => g.id === custom.id);
+    const wasCompleted = goal ? isGoalCompleted(goal) : false;
+    const predictedCompleted =
+      goal &&
+      isGoalCompleted({
+        ...goal,
+        current_amount:
+          Number(goal.current_amount || 0) + Math.max(0, Number(value || 0)),
+      });
+
     try {
       setSavingCustom(true);
-      await api.addContribution(String(custom.id), { amount, note: 'Aporte personalizado' });
+      await api.addContribution(String(custom.id), {
+        amount: value,
+        note: 'Aporte personalizado',
+      });
       setCustom(null);
       await load();
+
+      if (goal && !wasCompleted && predictedCompleted) {
+        Alert.alert(
+          '🎉 ¡Meta completada!',
+          `Felicitaciones, alcanzaste tu meta "${goal.title}".`
+        );
+      }
     } catch (e: any) {
       Alert.alert('Error', e?.message || 'No se pudo registrar el aporte.');
     } finally {
@@ -186,50 +283,44 @@ export default function GoalsScreen() {
       <LinearGradient colors={['#2e3b55', '#1f2738']} style={styles.header}>
         <View>
           <Text style={styles.brand}>Mis Metas Financieras</Text>
-          <Text style={styles.subtitle}>Define, visualiza y sigue el progreso de tus objetivos.</Text>
+          <Text style={styles.subtitle}>
+            Define, visualiza y sigue el progreso de tus objetivos.
+          </Text>
         </View>
       </LinearGradient>
 
       <ScrollView
         style={{ flex: 1 }}
         contentContainerStyle={styles.content}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+        }
       >
-        {/* Crear nueva meta */}
-        <Card title="Agregar nueva meta">
-          <TextInput
-            style={styles.input}
-            placeholder="Ej: Viaje a Europa"
-            placeholderTextColor={colors.muted}
-            value={title}
-            onChangeText={setTitle}
-          />
-          <TextInput
-            style={styles.input}
-            placeholder="Monto objetivo (CLP)"
-            placeholderTextColor={colors.muted}
-            keyboardType="numeric"
-            value={amountRaw}
-            onChangeText={setAmountRaw}
-          />
-          <Button onPress={onCreate} loading={creating} style={{ marginTop: 8 }}>
-            <Ionicons name="add-circle" size={18} color={colors.accentDark} />
-            Agregar Meta
-          </Button>
+        {/* Texto guía en vez del formulario fijo */}
+        <Card>
+          <Text style={{ color: colors.muted }}>
+            Crea nuevas metas financieras usando el botón{' '}
+            <Text style={{ fontWeight: '700', color: '#f3b34c' }}>+</Text> en
+            la esquina inferior derecha.
+          </Text>
         </Card>
 
-        {/* Lista de metas */}
+        {/* Metas activas */}
         <Section title="Tus metas">
           {busy ? (
-            <Card><ActivityIndicator /></Card>
-          ) : goals.length === 0 ? (
+            <Card>
+              <ActivityIndicator />
+            </Card>
+          ) : activeGoals.length === 0 ? (
             <Card>
               <Text style={{ color: colors.muted }}>
-                Aún no tienes metas activas. ¡Crea una para empezar!
+                Aún no tienes metas activas. Toca el botón{' '}
+                <Text style={{ fontWeight: '700', color: '#f3b34c' }}>+</Text>{' '}
+                para crear tu primera meta.
               </Text>
             </Card>
           ) : (
-            goals.map((g) => (
+            activeGoals.map((g) => (
               <GoalItem
                 key={g.id}
                 goal={g}
@@ -237,16 +328,121 @@ export default function GoalsScreen() {
                 onEdit={() => openEdit(g)}
                 onDelete={() => openDelete(g)}
                 onCustom={() => openCustom(g)}
+                completed={false}
               />
             ))
           )}
         </Section>
 
-        <View style={{ height: 24 }} />
+        {/* Metas completadas */}
+        {completedGoals.length > 0 && (
+          <Section title="Metas completadas">
+            {completedGoals.map((g) => (
+              <GoalItem
+                key={g.id}
+                goal={g}
+                onQuickAdd={onQuickAdd}
+                onEdit={() => openEdit(g)}
+                onDelete={() => openDelete(g)}
+                onCustom={() => openCustom(g)}
+                completed
+              />
+            ))}
+          </Section>
+        )}
+
+        <View style={{ height: 80 }} />
       </ScrollView>
 
+      {/* FAB → abre modal NUEVA META */}
+      <Pressable
+        onPress={() => setCreateVisible(true)}
+        accessibilityLabel="Crear nueva meta"
+        style={{
+          position: 'absolute',
+          right: 24,
+          bottom: 32,
+          width: 56,
+          height: 56,
+          borderRadius: 28,
+          backgroundColor: '#f3b34c',
+          justifyContent: 'center',
+          alignItems: 'center',
+          shadowColor: '#000',
+          shadowOpacity: 0.35,
+          shadowOffset: { width: 0, height: 4 },
+          shadowRadius: 6,
+          elevation: 6,
+        }}
+      >
+        <Ionicons name="add" size={26} color="#1f2738" />
+      </Pressable>
+
+      {/* --- Modal NUEVA META (usa title + amountRaw) --- */}
+      <Modal
+        visible={createVisible}
+        animationType="fade"
+        transparent
+        onRequestClose={() => setCreateVisible(false)}
+      >
+        <View style={modalStyles.backdrop}>
+          <View style={modalStyles.sheet}>
+            <Text style={modalStyles.title}>Nueva Meta</Text>
+
+            <Text style={modalStyles.label}>Nombre de la meta</Text>
+            <TextInput
+              style={modalStyles.input}
+              value={title}
+              onChangeText={setTitle}
+              placeholder="Ej: Viaje a Europa"
+              placeholderTextColor={colors.muted}
+            />
+
+            <Text style={modalStyles.label}>Monto objetivo (CLP)</Text>
+            <TextInput
+              style={modalStyles.input}
+              value={amountRaw}
+              onChangeText={setAmountRaw}
+              keyboardType="numeric"
+              placeholder="2000000"
+              placeholderTextColor={colors.muted}
+            />
+
+            <View style={modalStyles.row}>
+              <Button
+                variant="ghost"
+                onPress={() => {
+                  setCreateVisible(false);
+                }}
+                style={{ flex: 1 }}
+              >
+                Cancelar
+              </Button>
+              <Button
+                variant="primary"
+                onPress={onCreate}
+                loading={creating}
+                style={{ flex: 1 }}
+              >
+                <Ionicons
+                  name="add-circle"
+                  size={18}
+                  color={colors.accentDark}
+                />
+                Crear meta
+              </Button>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
       {/* --- Modal Editar --- */}
-      <Modal visible={!!editing} animationType="fade" transparent onRequestClose={() => setEditing(null)}>
+      <Modal
+        visible={!!editing}
+        animationType="fade"
+        transparent
+        onRequestClose={() => setEditing(null)}
+      >
         <View style={modalStyles.backdrop}>
           <View style={modalStyles.sheet}>
             <Text style={modalStyles.title}>Editar Meta</Text>
@@ -255,7 +451,9 @@ export default function GoalsScreen() {
             <TextInput
               style={modalStyles.input}
               value={editing?.title || ''}
-              onChangeText={(t) => setEditing((e) => (e ? { ...e, title: t } : e))}
+              onChangeText={(t) =>
+                setEditing((e) => (e ? { ...e, title: t } : e))
+              }
               placeholder="Ej: Comprar una casa"
               placeholderTextColor={colors.muted}
             />
@@ -264,17 +462,28 @@ export default function GoalsScreen() {
             <TextInput
               style={modalStyles.input}
               value={editing?.targetRaw || ''}
-              onChangeText={(t) => setEditing((e) => (e ? { ...e, targetRaw: t } : e))}
+              onChangeText={(t) =>
+                setEditing((e) => (e ? { ...e, targetRaw: t } : e))
+              }
               keyboardType="numeric"
               placeholder="10000000"
               placeholderTextColor={colors.muted}
             />
 
             <View style={modalStyles.row}>
-              <Button variant="ghost" onPress={() => setEditing(null)} style={{ flex: 1 }}>
+              <Button
+                variant="ghost"
+                onPress={() => setEditing(null)}
+                style={{ flex: 1 }}
+              >
                 Cancelar
               </Button>
-              <Button variant="primary" onPress={saveEdit} loading={savingEdit} style={{ flex: 1 }}>
+              <Button
+                variant="primary"
+                onPress={saveEdit}
+                loading={savingEdit}
+                style={{ flex: 1 }}
+              >
                 Guardar
               </Button>
             </View>
@@ -283,23 +492,33 @@ export default function GoalsScreen() {
       </Modal>
 
       {/* --- Modal Eliminar --- */}
-      <Modal visible={!!removing} animationType="fade" transparent onRequestClose={() => setRemoving(null)}>
+      <Modal
+        visible={!!removing}
+        animationType="fade"
+        transparent
+        onRequestClose={() => setRemoving(null)}
+      >
         <View style={modalStyles.backdrop}>
           <View style={modalStyles.sheet}>
             <Text style={modalStyles.title}>Eliminar Meta</Text>
             <Text style={{ color: '#fff', marginTop: 6 }}>
-              ¿Estás seguro de que deseas eliminar la meta "{removing?.title}"? Esta acción no se puede deshacer.
+              ¿Estás seguro de que deseas eliminar la meta "
+              {removing?.title}"? Esta acción no se puede deshacer.
             </Text>
 
             <View style={[modalStyles.row, { marginTop: 16 }]}>
-              <Button variant="ghost" onPress={() => setRemoving(null)} style={{ flex: 1 }}>
+              <Button
+                variant="ghost"
+                onPress={() => setRemoving(null)}
+                style={{ flex: 1 }}
+              >
                 Cancelar
               </Button>
               <Button
                 variant="primary"
                 onPress={confirmDelete}
                 loading={deleting}
-                style={{ flex: 1, backgroundColor: '#e53935' }} // rojo sólido
+                style={{ flex: 1, backgroundColor: '#e53935' }}
               >
                 Eliminar
               </Button>
@@ -309,7 +528,12 @@ export default function GoalsScreen() {
       </Modal>
 
       {/* --- Modal Aporte personalizado --- */}
-      <Modal visible={!!custom} animationType="fade" transparent onRequestClose={() => setCustom(null)}>
+      <Modal
+        visible={!!custom}
+        animationType="fade"
+        transparent
+        onRequestClose={() => setCustom(null)}
+      >
         <View style={modalStyles.backdrop}>
           <View style={modalStyles.sheet}>
             <Text style={modalStyles.title}>Aporte Personalizado</Text>
@@ -320,13 +544,24 @@ export default function GoalsScreen() {
               placeholder="Ej: 15000"
               placeholderTextColor={colors.muted}
               value={custom?.amountRaw || ''}
-              onChangeText={(t) => setCustom((c) => (c ? { ...c, amountRaw: t } : c))}
+              onChangeText={(t) =>
+                setCustom((c) => (c ? { ...c, amountRaw: t } : c))
+              }
             />
             <View style={modalStyles.row}>
-              <Button variant="ghost" onPress={() => setCustom(null)} style={{ flex: 1 }}>
+              <Button
+                variant="ghost"
+                onPress={() => setCustom(null)}
+                style={{ flex: 1 }}
+              >
                 Cancelar
               </Button>
-              <Button variant="primary" onPress={saveCustom} loading={savingCustom} style={{ flex: 1 }}>
+              <Button
+                variant="primary"
+                onPress={saveCustom}
+                loading={savingCustom}
+                style={{ flex: 1 }}
+              >
                 Agregar
               </Button>
             </View>
@@ -344,16 +579,19 @@ function GoalItem({
   onEdit,
   onDelete,
   onCustom,
+  completed = false,
 }: {
   goal: Goal;
   onQuickAdd: (id: string | number, add: number) => void;
   onEdit: () => void;
   onDelete: () => void;
   onCustom: () => void;
+  completed?: boolean;
 }) {
   const target = Number(goal.target_amount || 0);
   const current = Number(goal.current_amount || 0);
-  const pct = target > 0 ? Math.min(100, Math.round((current / target) * 100)) : 0;
+  const pct =
+    target > 0 ? Math.min(100, Math.round((current / target) * 100)) : 0;
 
   return (
     <Card>
@@ -362,11 +600,19 @@ function GoalItem({
         <Text style={[styles.goalTitle, { flex: 1 }]}>{goal.title}</Text>
 
         <View style={styles.actions}>
-          <Pressable onPress={onEdit} style={[styles.actionBtn, styles.editBtn]} accessibilityLabel="Editar meta">
+          <Pressable
+            onPress={onEdit}
+            style={[styles.actionBtn, styles.editBtn]}
+            accessibilityLabel="Editar meta"
+          >
             <Ionicons name="pencil" size={18} style={styles.actionIconEdit} />
           </Pressable>
 
-          <Pressable onPress={onDelete} style={[styles.actionBtn, styles.deleteBtn]} accessibilityLabel="Eliminar meta">
+          <Pressable
+            onPress={onDelete}
+            style={[styles.actionBtn, styles.deleteBtn]}
+            accessibilityLabel="Eliminar meta"
+          >
             <Ionicons name="trash" size={18} style={styles.actionIconDelete} />
           </Pressable>
         </View>
@@ -379,21 +625,43 @@ function GoalItem({
       <View style={{ marginVertical: 6 }}>
         <ProgressBar value={pct} />
       </View>
-      <Text style={styles.goalPct}>{pct}% completado</Text>
+      <Text style={styles.goalPct}>
+        {pct}% completado{completed ? ' 🎉' : ''}
+      </Text>
 
-      {/* Aportes rápidos + personalizado */}
-      <View style={styles.chipsRow}>
-        {[10_000, 20_000, 50_000].map((n) => (
-          <Pressable key={n} onPress={() => onQuickAdd(goal.id, n)} style={styles.chip}>
-            <Text style={styles.chipText}>+{formatCLP(n)}</Text>
+      {/* Si está completada, solo mensaje; si no, chips de aporte */}
+      {!completed ? (
+        <View style={styles.chipsRow}>
+          {[10_000, 20_000, 50_000].map((n) => (
+            <Pressable
+              key={n}
+              onPress={() => onQuickAdd(goal.id, n)}
+              style={styles.chip}
+            >
+              <Text style={styles.chipText}>+{formatCLP(n)}</Text>
+            </Pressable>
+          ))}
+
+          <View style={{ flex: 1 }} />
+          <Pressable
+            onPress={onCustom}
+            style={styles.plusBtn}
+            accessibilityLabel="Agregar aporte personalizado"
+          >
+            <Ionicons name="add" size={20} style={styles.plusIcon} />
           </Pressable>
-        ))}
-
-        <View style={{ flex: 1 }} />
-        <Pressable onPress={onCustom} style={styles.plusBtn} accessibilityLabel="Agregar aporte personalizado">
-          <Ionicons name="add" size={20} style={styles.plusIcon} />
-        </Pressable>
-      </View>
+        </View>
+      ) : (
+        <Text
+          style={{
+            marginTop: 6,
+            color: '#c0f5b1',
+            fontWeight: '600',
+          }}
+        >
+          🎉 Meta completada
+        </Text>
+      )}
     </Card>
   );
 }
@@ -405,7 +673,11 @@ function toNumber(s: string) {
 }
 function formatCLP(n: number) {
   try {
-    return n.toLocaleString('es-CL', { style: 'currency', currency: 'CLP', maximumFractionDigits: 0 });
+    return n.toLocaleString('es-CL', {
+      style: 'currency',
+      currency: 'CLP',
+      maximumFractionDigits: 0,
+    });
   } catch {
     return `$${Math.round(n)}`;
   }

@@ -13,6 +13,7 @@ import {
   Alert,
   FlatList,
   KeyboardAvoidingView,
+  Linking,
   Modal,
   Platform,
   Pressable,
@@ -44,6 +45,13 @@ type SummaryMonth = {
   inc: number;
   exp: number;
   net: number;
+};
+
+type Goal = {
+  id: string;
+  title: string;
+  target_amount?: number;
+  current_amount?: number;
 };
 
 const GREEN = '#22c55e';
@@ -98,12 +106,22 @@ export default function Transactions() {
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
 
-  // Modal agregar movimiento
-  const [modalVisible, setModalVisible] = useState(false);
-  const [tab, setTab] = useState<TxType>('income');
-  const [amountRaw, setAmountRaw] = useState('');
-  const [note, setNote] = useState('');
-  const [saving, setSaving] = useState(false);
+  // Depósito Webpay
+  const [showDepositModal, setShowDepositModal] = useState(false);
+  const [depositAmount, setDepositAmount] = useState('');
+  const [creatingDeposit, setCreatingDeposit] = useState(false);
+
+  // Retiro
+  const [showWithdrawModal, setShowWithdrawModal] = useState(false);
+  const [withdrawAmount, setWithdrawAmount] = useState('');
+  const [withdrawNote, setWithdrawNote] = useState('');
+  const [withdrawing, setWithdrawing] = useState(false);
+
+  // Distribución de depósito a metas
+  const [showDistributeModal, setShowDistributeModal] = useState(false);
+  const [goals, setGoals] = useState<Goal[]>([]);
+  const [alloc, setAlloc] = useState<Record<string, string>>({});
+  const [distributing, setDistributing] = useState(false);
 
   // Importar Excel/CSV
   const [importing, setImporting] = useState(false);
@@ -136,52 +154,215 @@ export default function Transactions() {
     load();
   };
 
-  const openAddModal = () => {
-    setTab('income');
-    setAmountRaw('');
-    setNote('');
-    setModalVisible(true);
+  // ========= KPIs derivados =========
+  const stats = useMemo(() => {
+    let deposits = 0;
+    let withdrawals = 0;
+
+    for (const t of txs) {
+      if (!t) continue;
+      const desc = (t.description || '').toLowerCase();
+
+      // Depósitos Webpay → descripción fija desde el backend
+      if (
+        desc.includes('depósito webpay') ||
+        desc.includes('deposito webpay')
+      ) {
+        if (t.amount > 0) deposits += t.amount;
+      }
+      // Retiros → cualquier transacción cuya descripción contenga "retiro"
+      else if (desc.includes('retiro')) {
+        if (t.amount < 0) withdrawals += Math.abs(t.amount);
+      }
+    }
+
+    const totalInc = kpi?.inc ?? 0; // incluye depósitos + ingresos Excel
+    const totalExp = kpi?.exp ?? 0; // incluye retiros + gastos Excel
+
+    const excelInc = Math.max(totalInc - deposits, 0);
+    const excelExp = Math.max(totalExp - withdrawals, 0);
+    const excelNet = excelInc - excelExp;
+    const balance = deposits - withdrawals;
+
+    return {
+      deposits,
+      withdrawals,
+      balance,
+      excelInc,
+      excelExp,
+      excelNet,
+    };
+  }, [txs, kpi]);
+
+  // ========= DEPÓSITO =========
+  const startDeposit = () => {
+    setDepositAmount('');
+    setShowDepositModal(true);
   };
 
-  const closeAddModal = () => {
-    if (saving) return;
-    setModalVisible(false);
+  const pollForDeposit = async (ms = 60_000) => {
+    const started = Date.now();
+    while (Date.now() - started < ms) {
+      try {
+        await load();
+      } catch {
+        // ignoramos errores intermedios
+      }
+      await new Promise((r) => setTimeout(r, 5_000));
+    }
   };
 
-  const parsedAmount = useMemo(() => {
-    const n = Number(String(amountRaw).replace(',', '.'));
-    return isFinite(n) ? n : 0;
-  }, [amountRaw]);
-
-  const submit = async () => {
-    if (saving) return;
-    const amt = parsedAmount;
-    if (!(amt > 0)) {
+  const confirmDeposit = async () => {
+    const val = Number(depositAmount.replace(/[^\d.-]/g, ''));
+    if (!val || val <= 0) {
       Alert.alert('Monto inválido', 'Ingresa un monto mayor a 0.');
       return;
     }
 
+    setCreatingDeposit(true);
     try {
-      setSaving(true);
-      await api.createTransaction({
-        type: tab === 'income' ? 'income' : 'expense',
-        amount: amt,
-        description: note || null,
-        // occurred_at → el backend usa la fecha de hoy por defecto
-      });
-      setModalVisible(false);
-      setAmountRaw('');
-      setNote('');
-      load();
+      // Backend: POST /payments/deposit { amount }
+      const r: any = await api.createDeposit({ amount: val });
+      const url = r?.payment_url;
+      if (url) {
+        Alert.alert('Depósito', 'Abriendo Webpay para completar el pago.');
+        Linking.openURL(url).catch(() => {});
+        // Poll para refrescar transacciones después del commit Webpay
+        pollForDeposit();
+      } else {
+        Alert.alert('Depósito', 'No se obtuvo URL de pago.');
+      }
+      setShowDepositModal(false);
     } catch (e: any) {
       console.error(e);
-      Alert.alert('Error', e?.message || 'No se pudo guardar el movimiento.');
+      Alert.alert('Error', e?.message || 'No se pudo iniciar el depósito.');
     } finally {
-      setSaving(false);
+      setCreatingDeposit(false);
     }
   };
 
-  // 🔽 AQUÍ VA EL CAMBIO IMPORTANTE 🔽
+  // ========= RETIRO =========
+  const openWithdraw = () => {
+    setWithdrawAmount('');
+    setWithdrawNote('');
+    setShowWithdrawModal(true);
+  };
+
+  const confirmWithdraw = async () => {
+    const val = Number(withdrawAmount.replace(/[^\d.-]/g, ''));
+    if (!val || val <= 0) {
+      Alert.alert('Monto inválido', 'Ingresa un monto mayor a 0.');
+      return;
+    }
+
+    setWithdrawing(true);
+    try {
+      // Descripción normalizada para que se marque como Retiro
+      const descBase = withdrawNote.trim();
+      const description = descBase
+        ? `Retiro: ${descBase}`
+        : 'Retiro';
+
+      // Si tienes un endpoint /payments/withdraw úsalo,
+      // si no, usamos createTransaction como ahora.
+      if ((api as any).withdraw) {
+        await (api as any).withdraw({
+          amount: val,
+          note: descBase,
+        });
+      } else {
+        await api.createTransaction({
+          type: 'expense',
+          amount: val,
+          description,
+        });
+      }
+
+      setShowWithdrawModal(false);
+      setWithdrawAmount('');
+      setWithdrawNote('');
+      await load();
+    } catch (e: any) {
+      console.error(e);
+      Alert.alert('Error', e?.message || 'No se pudo registrar el retiro.');
+    } finally {
+      setWithdrawing(false);
+    }
+  };
+
+  // ========= REDISTRIBUCIÓN A METAS =========
+  const openDistribute = async () => {
+    try {
+      const g = await api.listGoals();
+      const act = (g as any[]).filter(
+        (x) =>
+          Number(x?.target_amount || 0) - Number(x?.current_amount || 0) > 0
+      );
+      setGoals(
+        act.map((x) => ({
+          id: String(x.id),
+          title: String(x.title || x.name || 'Meta'),
+          target_amount: Number(x.target_amount || 0),
+          current_amount: Number(x.current_amount || 0),
+        }))
+      );
+      const init: Record<string, string> = {};
+      act.forEach((x) => {
+        init[String(x.id)] = '';
+      });
+      setAlloc(init);
+      setShowDistributeModal(true);
+    } catch (e: any) {
+      console.error(e);
+      Alert.alert('Error', e?.message || 'No se pudieron cargar metas.');
+    }
+  };
+
+  const totalAlloc = useMemo(
+    () =>
+      Object.values(alloc).reduce(
+        (s, v) => s + (Number(v.replace(/[^\d.-]/g, '')) || 0),
+        0
+      ),
+    [alloc]
+  );
+
+  const doDistribute = async () => {
+    if (goals.length === 0) {
+      setShowDistributeModal(false);
+      return;
+    }
+    if (totalAlloc <= 0) {
+      Alert.alert('Distribución', 'Ingresa montos a distribuir');
+      return;
+    }
+
+    setDistributing(true);
+    try {
+      for (const g of goals) {
+        const amt = Number(
+          (alloc[g.id] || '').replace(/[^\d.-]/g, '')
+        );
+        if (amt && amt > 0) {
+          await api.addContribution(g.id, { amount: amt });
+        }
+      }
+      setShowDistributeModal(false);
+      setAlloc({});
+      Alert.alert(
+        'Distribución',
+        'Se registraron los aportes en tus metas.'
+      );
+      await load();
+    } catch (e: any) {
+      console.error(e);
+      Alert.alert('Error', e?.message || 'No se pudo distribuir.');
+    } finally {
+      setDistributing(false);
+    }
+  };
+
+  // ========= IMPORTAR EXCEL / CSV =========
   const handleImportExcel = async () => {
     if (importing) return;
 
@@ -257,7 +438,6 @@ export default function Transactions() {
       setImporting(false);
     }
   };
-  // 🔼 FIN DEL CAMBIO 🔼
 
   const renderItem = ({ item }: { item: Transaction }) => {
     const isIncome = item.type === 'income';
@@ -328,28 +508,84 @@ export default function Transactions() {
               </Pressable>
             </View>
 
+            {/* Fila 1: Depósitos / Retiros / Saldo cuenta */}
             <View style={styles.kpisRow}>
               <View style={[styles.kpiCard, { borderColor: GREEN + '55' }]}>
-                <Text style={styles.kpiLabel}>Ingresos</Text>
+                <Text style={styles.kpiLabel}>Depósitos</Text>
                 <Text style={[styles.kpiValue, { color: GREEN }]}>
-                  {formatCLP(kpi?.inc ?? 0)}
+                  {formatCLP(stats.deposits)}
                 </Text>
               </View>
               <View style={[styles.kpiCard, { borderColor: RED + '55' }]}>
-                <Text style={styles.kpiLabel}>Gastos</Text>
+                <Text style={styles.kpiLabel}>Retiros</Text>
                 <Text style={[styles.kpiValue, { color: RED }]}>
-                  {formatCLP(Math.abs(kpi?.exp ?? 0))}
+                  {formatCLP(stats.withdrawals)}
                 </Text>
               </View>
               <View style={[styles.kpiCard, { borderColor: '#38bdf855' }]}>
-                <Text style={styles.kpiLabel}>Neto</Text>
+                <Text style={styles.kpiLabel}>Saldo cuenta</Text>
                 <Text style={[styles.kpiValue, { color: '#38bdf8' }]}>
-                  {formatCLP(kpi?.net ?? 0)}
+                  {formatCLP(stats.balance)}
                 </Text>
               </View>
             </View>
 
-            {/* Botón Importar Excel/CSV */}
+            {/* Fila 2: Ingresos/Gastos/Neto desde Excel */}
+            <View style={styles.kpisRow}>
+              <View style={[styles.kpiCard, { borderColor: GREEN + '55' }]}>
+                <Text style={styles.kpiLabel}>Ingresos (Excel)</Text>
+                <Text style={[styles.kpiValue, { color: GREEN }]}>
+                  {formatCLP(stats.excelInc)}
+                </Text>
+              </View>
+              <View style={[styles.kpiCard, { borderColor: RED + '55' }]}>
+                <Text style={styles.kpiLabel}>Gastos (Excel)</Text>
+                <Text style={[styles.kpiValue, { color: RED }]}>
+                  {formatCLP(stats.excelExp)}
+                </Text>
+              </View>
+              <View style={[styles.kpiCard, { borderColor: '#38bdf855' }]}>
+                <Text style={styles.kpiLabel}>Neto (Excel)</Text>
+                <Text style={[styles.kpiValue, { color: '#38bdf8' }]}>
+                  {formatCLP(stats.excelNet)}
+                </Text>
+              </View>
+            </View>
+
+            {/* Acciones: Depósito / Retiro */}
+            <View style={styles.actionsRow}>
+              <Pressable
+                style={styles.btnSecondary}
+                onPress={startDeposit}
+                disabled={creatingDeposit}
+              >
+                <Ionicons
+                  name="card-outline"
+                  size={14}
+                  color="#e2e8f0"
+                />
+                <Text style={styles.btnSecondaryTxt}>
+                  {creatingDeposit ? 'Procesando...' : 'Depósito Webpay'}
+                </Text>
+              </Pressable>
+
+              <Pressable
+                style={styles.btnSecondary}
+                onPress={openWithdraw}
+                disabled={withdrawing}
+              >
+                <Ionicons
+                  name="arrow-down-circle-outline"
+                  size={14}
+                  color="#e2e8f0"
+                />
+                <Text style={styles.btnSecondaryTxt}>
+                  {withdrawing ? 'Procesando...' : 'Retiro'}
+                </Text>
+              </Pressable>
+            </View>
+
+            {/* Acciones: Importar / Distribuir depósito */}
             <View style={styles.actionsRow}>
               <Pressable
                 style={styles.btnSecondary}
@@ -363,6 +599,21 @@ export default function Transactions() {
                 />
                 <Text style={styles.btnSecondaryTxt}>
                   {importing ? 'Importando...' : 'Importar Excel/CSV'}
+                </Text>
+              </Pressable>
+
+              <Pressable
+                style={styles.btnSecondary}
+                onPress={openDistribute}
+                disabled={distributing}
+              >
+                <Ionicons
+                  name="pie-chart-outline"
+                  size={14}
+                  color="#e2e8f0"
+                />
+                <Text style={styles.btnSecondaryTxt}>
+                  {distributing ? 'Distribuyendo...' : 'Distribuir depósito'}
                 </Text>
               </Pressable>
             </View>
@@ -401,87 +652,120 @@ export default function Transactions() {
             )}
           </View>
 
-          {/* FAB Agregar movimiento */}
-          <Pressable
-            style={styles.fab}
-            onPress={openAddModal}
-          >
-            <Ionicons name="add" size={24} color="#020617" />
-          </Pressable>
-
-          {/* MODAL: Agregar movimiento */}
+          {/* MODAL: Depósito Webpay */}
           <Modal
-            visible={modalVisible}
+            visible={showDepositModal}
             transparent
             animationType="slide"
-            onRequestClose={closeAddModal}
+            onRequestClose={() => setShowDepositModal(false)}
           >
             <View style={styles.modalBackdrop}>
               <View style={styles.modalSheet}>
                 <View style={styles.modalHandle} />
-
-                <Text style={styles.modalTitle}>Nuevo movimiento</Text>
-
-                {/* Tabs Ingreso / Gasto */}
-                <View style={styles.tabRow}>
-                  <Pressable
-                    style={[
-                      styles.tabChip,
-                      tab === 'income' && styles.tabChipActive,
-                    ]}
-                    onPress={() => setTab('income')}
-                  >
-                    <Text
-                      style={[
-                        styles.tabTxt,
-                        tab === 'income' && styles.tabTxtActive,
-                      ]}
-                    >
-                      Ingreso
-                    </Text>
-                  </Pressable>
-                  <Pressable
-                    style={[
-                      styles.tabChip,
-                      tab === 'expense' && styles.tabChipActive,
-                    ]}
-                    onPress={() => setTab('expense')}
-                  >
-                    <Text
-                      style={[
-                        styles.tabTxt,
-                        tab === 'expense' && styles.tabTxtActive,
-                      ]}
-                    >
-                      Gasto
-                    </Text>
-                  </Pressable>
-                </View>
+                <Text style={styles.modalTitle}>Depósito Webpay</Text>
 
                 <ScrollView
                   style={styles.modalScroll}
                   contentContainerStyle={styles.modalContent}
                   keyboardShouldPersistTaps="handled"
                 >
-                  <Text style={styles.fieldLabel}>Monto</Text>
+                  <Text style={styles.fieldLabel}>Monto a depositar</Text>
                   <TextInput
-                    value={amountRaw}
-                    onChangeText={setAmountRaw}
+                    value={depositAmount}
+                    onChangeText={setDepositAmount}
                     keyboardType="numeric"
-                    placeholder="Ej: 150000"
+                    placeholder="Ej: 100000"
                     placeholderTextColor="#6b7280"
                     style={styles.input}
                   />
 
-                  <Text style={styles.fieldLabel}>Descripción (opcional)</Text>
+                  <View style={{ flexDirection: 'row', marginTop: 8 }}>
+                    {[10000, 20000, 50000, 100000].map((v) => {
+                      const active =
+                        Number(
+                          depositAmount.replace(/[^\d.-]/g, '')
+                        ) === v;
+                      return (
+                        <Pressable
+                          key={v}
+                          onPress={() => setDepositAmount(String(v))}
+                          style={[
+                            styles.tabChip,
+                            active && styles.tabChipActive,
+                          ]}
+                        >
+                          <Text
+                            style={[
+                              styles.tabTxt,
+                              active && styles.tabTxtActive,
+                            ]}
+                          >
+                            {formatCLP(v)}
+                          </Text>
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+                </ScrollView>
+
+                <View style={styles.modalActions}>
+                  <Pressable
+                    style={styles.btnGhost}
+                    onPress={() => setShowDepositModal(false)}
+                    disabled={creatingDeposit}
+                  >
+                    <Text style={styles.btnGhostTxt}>Cancelar</Text>
+                  </Pressable>
+                  <Pressable
+                    style={styles.btnPrimary}
+                    onPress={confirmDeposit}
+                    disabled={creatingDeposit}
+                  >
+                    <Text style={styles.btnPrimaryTxt}>
+                      {creatingDeposit
+                        ? 'Redirigiendo...'
+                        : 'Continuar con Webpay'}
+                    </Text>
+                  </Pressable>
+                </View>
+              </View>
+            </View>
+          </Modal>
+
+          {/* MODAL: Retiro */}
+          <Modal
+            visible={showWithdrawModal}
+            transparent
+            animationType="slide"
+            onRequestClose={() => setShowWithdrawModal(false)}
+          >
+            <View style={styles.modalBackdrop}>
+              <View style={styles.modalSheet}>
+                <View style={styles.modalHandle} />
+                <Text style={styles.modalTitle}>Retiro</Text>
+
+                <ScrollView
+                  style={styles.modalScroll}
+                  contentContainerStyle={styles.modalContent}
+                  keyboardShouldPersistTaps="handled"
+                >
+                  <Text style={styles.fieldLabel}>Monto a retirar</Text>
                   <TextInput
-                    value={note}
-                    onChangeText={setNote}
-                    placeholder={
-                      tab === 'income'
-                        ? 'Sueldo, freelance...'
-                        : 'Supermercado, cuentas...'
-                    }
+                    value={withdrawAmount}
+                    onChangeText={setWithdrawAmount}
+                    keyboardType="numeric"
+                    placeholder="Ej: 50000"
+                    placeholderTextColor="#6b7280"
+                    style={styles.input}
+                  />
+
+                  <Text style={styles.fieldLabel}>
+                    Comentario (opcional)
+                  </Text>
+                  <TextInput
+                    value={withdrawNote}
+                    onChangeText={setWithdrawNote}
+                    placeholder="Ej: Cuenta personal"
                     placeholderTextColor="#6b7280"
                     style={[styles.input, styles.inputMultiline]}
                     multiline
@@ -491,19 +775,89 @@ export default function Transactions() {
                 <View style={styles.modalActions}>
                   <Pressable
                     style={styles.btnGhost}
-                    onPress={closeAddModal}
-                    disabled={saving}
+                    onPress={() => setShowWithdrawModal(false)}
+                    disabled={withdrawing}
                   >
                     <Text style={styles.btnGhostTxt}>Cancelar</Text>
                   </Pressable>
                   <Pressable
                     style={styles.btnPrimary}
-                    onPress={submit}
-                    disabled={saving}
+                    onPress={confirmWithdraw}
+                    disabled={withdrawing}
                   >
                     <Text style={styles.btnPrimaryTxt}>
-                      {saving ? 'Guardando...' : 'Guardar'}
+                      {withdrawing ? 'Procesando...' : 'Confirmar retiro'}
                     </Text>
+                  </Pressable>
+                </View>
+              </View>
+            </View>
+          </Modal>
+
+          {/* MODAL: Distribuir depósito en metas */}
+          <Modal
+            visible={showDistributeModal}
+            transparent
+            animationType="slide"
+            onRequestClose={() => setShowDistributeModal(false)}
+          >
+            <View style={styles.modalBackdrop}>
+              <View style={styles.modalSheet}>
+                <View style={styles.modalHandle} />
+                <Text style={styles.modalTitle}>Distribuir depósito</Text>
+
+                <ScrollView
+                  style={styles.modalScroll}
+                  contentContainerStyle={styles.modalContent}
+                  keyboardShouldPersistTaps="handled"
+                >
+                  {goals.length === 0 ? (
+                    <Text style={styles.emptyText}>
+                      No hay metas activas disponibles.
+                    </Text>
+                  ) : (
+                    goals.map((g) => (
+                      <View key={g.id} style={{ marginBottom: 12 }}>
+                        <Text style={styles.fieldLabel}>{g.title}</Text>
+                        <TextInput
+                          value={alloc[g.id] || ''}
+                          onChangeText={(txt) =>
+                            setAlloc((m) => ({ ...m, [g.id]: txt }))
+                          }
+                          keyboardType="numeric"
+                          placeholder="Monto a asignar"
+                          placeholderTextColor="#6b7280"
+                          style={styles.input}
+                        />
+                      </View>
+                    ))
+                  )}
+                </ScrollView>
+
+                <View style={{ paddingHorizontal: 16, marginBottom: 8 }}>
+                  <Text style={styles.fieldLabel}>
+                    Total a distribuir: {formatCLP(totalAlloc)}
+                  </Text>
+                </View>
+
+                <View style={styles.modalActions}>
+                  <Pressable
+                    style={styles.btnGhost}
+                    onPress={() => setShowDistributeModal(false)}
+                    disabled={distributing}
+                  >
+                    <Text style={styles.btnGhostTxt}>Cancelar</Text>
+                  </Pressable>
+                  <Pressable
+                    style={styles.btnPrimary}
+                    onPress={doDistribute}
+                    disabled={distributing}
+                  >
+                    <Text style={styles.btnPrimaryTxt}>
+                      {distributing
+                        ? 'Distribuyendo...'
+                        : 'Confirmar distribución'}
+                  </Text>
                   </Pressable>
                 </View>
               </View>

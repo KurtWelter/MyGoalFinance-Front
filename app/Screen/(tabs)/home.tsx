@@ -1,4 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
+import { useFocusEffect } from '@react-navigation/native'; // 👈 NUEVO
 import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
@@ -16,13 +17,26 @@ import api from '../../../constants/api';
 import { useAuth } from '../../../store/auth';
 import styles from '../../../Styles/homeStyles';
 
+// 👇 tipo alineado con lo que devuelve el backend (Excel + Webpay)
 type SummaryMonth = {
   month: string;
   from: string;
   to: string;
+
+  // Solo Excel (importación)
   inc: number;
   exp: number;
   net: number;
+
+  // Wallet (Webpay / retiros)
+  deposits?: number;
+  withdrawals?: number;
+  account_balance?: number;
+
+  // aliases por compatibilidad (Excel)
+  inc_excel?: number;
+  exp_excel?: number;
+  net_excel?: number;
 };
 
 type Article = {
@@ -149,6 +163,11 @@ export default function Home() {
       ? monthlySeries[selectedMonthIndex]
       : null;
 
+  // 👇 KPIs de la wallet (Webpay)
+  const walletDeposits = summary?.deposits ?? 0;
+  const walletWithdrawals = summary?.withdrawals ?? 0;
+  const walletNet = walletDeposits - walletWithdrawals;
+
   const load = useCallback(async () => {
     setLoading(true);
     try {
@@ -177,6 +196,7 @@ export default function Home() {
         const raw = seriesRes.value as SummaryMonth[];
         const serie: MonthlyPoint[] = raw.map((item, idx) => ({
           label: MONTH_LABELS[idx] ?? `${idx + 1}`,
+          // 👇 gráfico = solo Excel
           inc: item?.inc || 0,
           exp: item?.exp || 0,
         }));
@@ -191,6 +211,14 @@ export default function Home() {
     }
   }, [selectedYear]);
 
+  // ✅ Se ejecuta cada vez que el Home gana foco (cuando vuelves desde otra pestaña)
+  useFocusEffect(
+    useCallback(() => {
+      load();
+    }, [load])
+  );
+
+  // (opcional) primera carga al montar, por si la pantalla ya está enfocada
   useEffect(() => {
     load();
   }, [load]);
@@ -264,7 +292,7 @@ export default function Home() {
         }
         showsVerticalScrollIndicator={false}
       >
-        {/* KPIs: Ingresos / Gastos / Neto */}
+        {/* KPIs: ahora muestran solo Webpay/Retiros/Neto */}
         <View style={styles.row}>
           <View style={styles.kpi}>
             <View style={[styles.kpiIconWrap, { backgroundColor: '#163c2a' }]}>
@@ -272,7 +300,7 @@ export default function Home() {
             </View>
             <Text style={styles.kpiLabel}>Ingresos</Text>
             <Text style={[styles.kpiValue, { color: '#e7ffe0' }]}>
-              {formatCLP(summary?.inc || 0)}
+              {formatCLP(walletDeposits)}
             </Text>
           </View>
 
@@ -282,7 +310,7 @@ export default function Home() {
             </View>
             <Text style={styles.kpiLabel}>Gastos</Text>
             <Text style={[styles.kpiValue, { color: '#ffd6e1' }]}>
-              {formatCLP(summary?.exp || 0)}
+              {formatCLP(walletWithdrawals)}
             </Text>
           </View>
 
@@ -292,12 +320,12 @@ export default function Home() {
             </View>
             <Text style={styles.kpiLabel}>Neto</Text>
             <Text style={[styles.kpiValue, { color: '#e8e3ff' }]}>
-              {formatCLP(summary?.net || 0)}
+              {formatCLP(walletNet)}
             </Text>
           </View>
         </View>
 
-        {/* Selector de año + gráfico Ingresos/Gastos */}
+        {/* Selector de año + gráfico Ingresos/Gastos (Excel) */}
         <View style={styles.section}>
           <View style={styles.yearRow}>
             <TouchableOpacity
@@ -363,7 +391,7 @@ export default function Home() {
                         activeOpacity={0.8}
                         onPress={() => setSelectedMonthIndex(idx)}
                       >
-                        {/* 👇 barras sin números encima */}
+                        {/* barras sin números encima */}
                         <View style={styles.chartBarsPair}>
                           <View style={styles.chartBarWrap}>
                             <View

@@ -132,20 +132,6 @@ export default function EditProfile() {
                 <Chip key={opt} text={opt} selected={exp === opt} onPress={() => setExp(opt)} />
               ))}
             </View>
-
-            {/* Ingresos */}
-            <Divider />
-            <FieldLabel icon="cash" label="Ingresos (CLP)" />
-            <TextInput
-              style={styles.input}
-              placeholder="Ej: 800000"
-              placeholderTextColor={MUTED}
-              keyboardType="numeric"
-              value={incomeRaw}
-              onChangeText={setIncomeRaw}
-            />
-            {!!incomePretty && <Text style={styles.helper}>≈ {incomePretty} CLP</Text>}
-
             {/* Meta financiera */}
             <Divider />
             <FieldLabel icon="flag" label="Meta Financiera" />

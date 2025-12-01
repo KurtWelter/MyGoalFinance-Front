@@ -116,7 +116,6 @@ export default function Profile() {
 
           <Item label="Edad" value={profile?.age_range || '—'} />
           <Item label="Nivel en finanzas" value={mapLevel(profile?.experience)} />
-          <Item label="Ingresos mensuales" value={fmtCLP(profile?.monthly_income)} />
           <Item label="Meta financiera principal" value={profile?.finance_goal || '—'} />
         </View>
 
