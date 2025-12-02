@@ -24,6 +24,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import api from '../../../constants/api';
 import styles from '../../../Styles/transactionsStyles';
 
@@ -100,6 +101,8 @@ function formatCLP(n: number) {
 }
 
 export default function Transactions() {
+  const insets = useSafeAreaInsets();
+
   const [month, setMonth] = useState<string>(todayMonth());
   const [txs, setTxs] = useState<Transaction[]>([]);
   const [kpi, setKpi] = useState<SummaryMonth | null>(null);
@@ -163,21 +166,18 @@ export default function Transactions() {
       if (!t) continue;
       const desc = (t.description || '').toLowerCase();
 
-      // Depósitos Webpay → descripción fija desde el backend
       if (
         desc.includes('depósito webpay') ||
         desc.includes('deposito webpay')
       ) {
         if (t.amount > 0) deposits += t.amount;
-      }
-      // Retiros → cualquier transacción cuya descripción contenga "retiro"
-      else if (desc.includes('retiro')) {
+      } else if (desc.includes('retiro')) {
         if (t.amount < 0) withdrawals += Math.abs(t.amount);
       }
     }
 
-    const totalInc = kpi?.inc ?? 0; // incluye depósitos + ingresos Excel
-    const totalExp = kpi?.exp ?? 0; // incluye retiros + gastos Excel
+    const totalInc = kpi?.inc ?? 0;
+    const totalExp = kpi?.exp ?? 0;
 
     const excelInc = Math.max(totalInc - deposits, 0);
     const excelExp = Math.max(totalExp - withdrawals, 0);
@@ -221,13 +221,11 @@ export default function Transactions() {
 
     setCreatingDeposit(true);
     try {
-      // Backend: POST /payments/deposit { amount }
       const r: any = await api.createDeposit({ amount: val });
       const url = r?.payment_url;
       if (url) {
         Alert.alert('Depósito', 'Abriendo Webpay para completar el pago.');
         Linking.openURL(url).catch(() => {});
-        // Poll para refrescar transacciones después del commit Webpay
         pollForDeposit();
       } else {
         Alert.alert('Depósito', 'No se obtuvo URL de pago.');
@@ -257,14 +255,9 @@ export default function Transactions() {
 
     setWithdrawing(true);
     try {
-      // Descripción normalizada para que se marque como Retiro
       const descBase = withdrawNote.trim();
-      const description = descBase
-        ? `Retiro: ${descBase}`
-        : 'Retiro';
+      const description = descBase ? `Retiro: ${descBase}` : 'Retiro';
 
-      // Si tienes un endpoint /payments/withdraw úsalo,
-      // si no, usamos createTransaction como ahora.
       if ((api as any).withdraw) {
         await (api as any).withdraw({
           amount: val,
@@ -412,10 +405,8 @@ export default function Transactions() {
       const res: any = await api.importTransactions(form);
       console.log('[IMPORT] respuesta API:', res);
 
-      // Recargar lista + KPIs
       await load();
 
-      // Compatibilidad: acepta tanto { imported } como { inserted }
       const imported =
         typeof res === 'number'
           ? res
@@ -448,7 +439,6 @@ export default function Transactions() {
       if (!item.occurred_at) return '';
       try {
         const d = new Date(item.occurred_at);
-        // Forzamos formato chileno dd-mm-aaaa
         return d.toLocaleDateString('es-CL');
       } catch {
         return item.occurred_at;
@@ -508,7 +498,7 @@ export default function Transactions() {
               </Pressable>
             </View>
 
-            {/* Fila 1: Depósitos / Retiros / Saldo cuenta */}
+            {/* Fila 1 */}
             <View style={styles.kpisRow}>
               <View style={[styles.kpiCard, { borderColor: GREEN + '55' }]}>
                 <Text style={styles.kpiLabel}>Depósitos</Text>
@@ -530,7 +520,7 @@ export default function Transactions() {
               </View>
             </View>
 
-            {/* Fila 2: Ingresos/Gastos/Neto desde Excel */}
+            {/* Fila 2 */}
             <View style={styles.kpisRow}>
               <View style={[styles.kpiCard, { borderColor: GREEN + '55' }]}>
                 <Text style={styles.kpiLabel}>Ingresos (Excel)</Text>
@@ -552,7 +542,7 @@ export default function Transactions() {
               </View>
             </View>
 
-            {/* Acciones: Depósito / Retiro */}
+            {/* Acciones fila 1 */}
             <View style={styles.actionsRow}>
               <Pressable
                 style={styles.btnSecondary}
@@ -585,7 +575,7 @@ export default function Transactions() {
               </Pressable>
             </View>
 
-            {/* Acciones: Importar / Distribuir depósito */}
+            {/* Acciones fila 2 */}
             <View style={styles.actionsRow}>
               <Pressable
                 style={styles.btnSecondary}
@@ -659,8 +649,19 @@ export default function Transactions() {
             animationType="slide"
             onRequestClose={() => setShowDepositModal(false)}
           >
-            <View style={styles.modalBackdrop}>
-              <View style={styles.modalSheet}>
+            <KeyboardAvoidingView
+              style={styles.modalBackdrop}
+              behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+              keyboardVerticalOffset={
+                Platform.OS === 'ios' ? insets.bottom + 16 : 0
+              }
+            >
+              <View
+                style={[
+                  styles.modalSheet,
+                  { paddingBottom: (insets.bottom || 0) + 24 },
+                ]}
+              >
                 <View style={styles.modalHandle} />
                 <Text style={styles.modalTitle}>Depósito Webpay</Text>
 
@@ -729,7 +730,7 @@ export default function Transactions() {
                   </Pressable>
                 </View>
               </View>
-            </View>
+            </KeyboardAvoidingView>
           </Modal>
 
           {/* MODAL: Retiro */}
@@ -739,8 +740,19 @@ export default function Transactions() {
             animationType="slide"
             onRequestClose={() => setShowWithdrawModal(false)}
           >
-            <View style={styles.modalBackdrop}>
-              <View style={styles.modalSheet}>
+            <KeyboardAvoidingView
+              style={styles.modalBackdrop}
+              behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+              keyboardVerticalOffset={
+                Platform.OS === 'ios' ? insets.bottom + 16 : 0
+              }
+            >
+              <View
+                style={[
+                  styles.modalSheet,
+                  { paddingBottom: (insets.bottom || 0) + 24 },
+                ]}
+              >
                 <View style={styles.modalHandle} />
                 <Text style={styles.modalTitle}>Retiro</Text>
 
@@ -791,7 +803,7 @@ export default function Transactions() {
                   </Pressable>
                 </View>
               </View>
-            </View>
+            </KeyboardAvoidingView>
           </Modal>
 
           {/* MODAL: Distribuir depósito en metas */}
@@ -801,8 +813,19 @@ export default function Transactions() {
             animationType="slide"
             onRequestClose={() => setShowDistributeModal(false)}
           >
-            <View style={styles.modalBackdrop}>
-              <View style={styles.modalSheet}>
+            <KeyboardAvoidingView
+              style={styles.modalBackdrop}
+              behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+              keyboardVerticalOffset={
+                Platform.OS === 'ios' ? insets.bottom + 16 : 0
+              }
+            >
+              <View
+                style={[
+                  styles.modalSheet,
+                  { paddingBottom: (insets.bottom || 0) + 24 },
+                ]}
+              >
                 <View style={styles.modalHandle} />
                 <Text style={styles.modalTitle}>Distribuir depósito</Text>
 
@@ -857,11 +880,11 @@ export default function Transactions() {
                       {distributing
                         ? 'Distribuyendo...'
                         : 'Confirmar distribución'}
-                  </Text>
+                    </Text>
                   </Pressable>
                 </View>
               </View>
-            </View>
+            </KeyboardAvoidingView>
           </Modal>
         </View>
       </KeyboardAvoidingView>
